@@ -15,6 +15,18 @@ export interface Flashcard {
   reviewCount: number;
   nextReviewAt?: string;
   createdAt: string;
+
+  // —— v3：间隔重复（SRS）所需字段 ——
+  /** 难度因子，初始 2.5，范围 1.3~3.0 */
+  ease?: number;
+  /** 当前间隔天数，0 表示尚未排期 */
+  intervalDays?: number;
+  /** 遗忘次数（标记「不熟悉」累计） */
+  lapses?: number;
+  /** 上次复习时间，用于统计「今日已复习」 */
+  lastReviewedAt?: string;
+  /** 暂停复习（不进入队列） */
+  suspended?: boolean;
 }
 
 export class KnowFlowDB extends Dexie {
@@ -41,6 +53,34 @@ export class KnowFlowDB extends Dexie {
       flashcards: "id, documentId, mastery, nextReviewAt, createdAt",
       aiJobs: "id, documentId, type, status, createdAt"
     });
+
+    // v2 -> v3：卡片补充 SRS 字段与复习统计索引；只加字段，不改旧语义（旧版本读新数据仍可用）
+    this.version(3)
+      .stores({
+        documents: "id, title, categoryId, favorite, createdAt, updatedAt, *tags",
+        categories: "id, name, sortOrder",
+        tasks: "id, status, priority, dueDate, sourceDocumentId, createdAt",
+        flashcards:
+          "id, documentId, mastery, nextReviewAt, lastReviewedAt, suspended, createdAt",
+        aiJobs: "id, documentId, type, status, createdAt"
+      })
+      .upgrade(async (tx) => {
+        // 迁移失败不能阻断打开数据库：外层 try/catch 后仍保留原数据
+        await tx
+          .table("flashcards")
+          .toCollection()
+          .modify((card: Flashcard) => {
+            if (card.ease == null) card.ease = 2.5;
+            if (card.intervalDays == null) card.intervalDays = 0;
+            if (card.lapses == null) card.lapses = 0;
+            if (card.suspended == null) card.suspended = false;
+            // 老数据若已复习过但没有排期，补一个「创建后 1 天」，避免升级当天全部涌入队列
+            if (!card.nextReviewAt && (card.reviewCount ?? 0) > 0) {
+              const base = new Date(card.createdAt || Date.now()).getTime();
+              card.nextReviewAt = new Date(base + 24 * 3600 * 1000).toISOString();
+            }
+          });
+      });
   }
 }
 

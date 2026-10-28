@@ -1,5 +1,10 @@
 import { transcribeAudio, type TranscribeConfig } from "./transcribe";
 
+/** 当前环境是否具备录音能力（麦克风 + MediaRecorder） */
+export function canRecordAudio(): boolean {
+  return typeof navigator !== "undefined" && !!navigator.mediaDevices?.getUserMedia && typeof MediaRecorder !== "undefined";
+}
+
 /** 一次录音会话：stop 停止并转写，abort 丢弃 */
 export interface WhisperSession {
   stop(): Promise<string>;

@@ -12,7 +12,8 @@
     "test:render": "node scripts/smoke-render.mjs",
     "test:voice": "node scripts/run-voice.mjs",
     "test:cards": "node scripts/run-cards.mjs",
-    "test:provider": "node scripts/run-provider.mjs"
+    "test:provider": "node scripts/run-provider.mjs",
+    "test:srs": "node scripts/run-srs.mjs"
   },
   "dependencies": {
     "dexie": "^4.0.8",

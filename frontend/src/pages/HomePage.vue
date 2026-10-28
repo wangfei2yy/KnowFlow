@@ -3,6 +3,7 @@ import { computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { useDocumentStore } from "@/stores/documentStore";
 import { useTaskStore } from "@/stores/taskStore";
+import { useReviewStore } from "@/stores/reviewStore";
 import SearchBar from "@/components/SearchBar.vue";
 import DocumentCard from "@/components/DocumentCard.vue";
 import EmptyState from "@/components/EmptyState.vue";
@@ -21,9 +22,11 @@ import {
 const router = useRouter();
 const docStore = useDocumentStore();
 const taskStore = useTaskStore();
+const reviewStore = useReviewStore();
 
 onMounted(() => {
   taskStore.load();
+  void reviewStore.refresh();
 });
 
 const quickActions = [
@@ -69,6 +72,38 @@ function openDocument(id: string) {
           <div class="mt-1 text-xs text-slate-400">{{ s.label }}</div>
         </div>
       </div>
+    </div>
+
+    <!-- 今日复习行动卡 -->
+    <div
+      v-if="reviewStore.hasPending || reviewStore.todayDone > 0"
+      class="card mt-4 flex flex-wrap items-center gap-4 p-4"
+    >
+      <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-rose-50 text-rose-500">
+        <GraduationCap :size="22" />
+      </div>
+      <div class="min-w-0 flex-1">
+        <div class="text-sm font-medium text-slate-800">
+          <template v-if="reviewStore.hasPending">
+            今天有 <span class="font-bold text-rose-500">{{ reviewStore.pending }}</span> 张卡片待复习
+            <span v-if="reviewStore.overdue" class="ml-1 text-xs font-normal text-rose-400">
+              （逾期 {{ reviewStore.overdue }} 张）
+            </span>
+          </template>
+          <template v-else>今天的复习已经清空啦 🎉</template>
+        </div>
+        <div class="mt-0.5 text-xs text-slate-400">
+          今日已复习 {{ reviewStore.todayDone }} 张 · 按记忆曲线安排，先温故再学新
+        </div>
+      </div>
+      <router-link
+        v-if="reviewStore.hasPending"
+        to="/study?mode=review"
+        class="btn-primary shrink-0"
+      >
+        开始复习
+      </router-link>
+      <router-link v-else to="/study" class="btn-secondary shrink-0">查看学习中心</router-link>
     </div>
 
     <!-- 搜索 -->

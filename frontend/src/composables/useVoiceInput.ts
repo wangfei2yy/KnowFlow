@@ -1,7 +1,7 @@
 import { computed, onBeforeUnmount, ref, type Ref } from "vue";
 import { useAIStore } from "@/stores/aiStore";
 import { IS_MINITOOL, detectInAppBrowser } from "@/utils/runtime";
-import { startWhisperSession, type WhisperSession } from "@/services/speech/whisperRecorder";
+import { startWhisperSession, canRecordAudio, type WhisperSession } from "@/services/speech/whisperRecorder";
 
 export type VoiceStatus = "idle" | "listening" | "transcribing";
 /** 语音输入通道：whisper = 自备 Key 录音上传转写；browser = 浏览器原生识别 */
@@ -68,12 +68,7 @@ export function useVoiceInput(options: VoiceOptions) {
   const available = computed(() => mode.value !== "none");
 
   /** 是否具备录音能力（有无 MediaRecorder/getUserMedia） */
-  const canRecord = computed(
-    () =>
-      typeof navigator !== "undefined" &&
-      !!navigator.mediaDevices?.getUserMedia &&
-      typeof MediaRecorder !== "undefined"
-  );
+  const canRecord = computed(() => canRecordAudio());
 
   /** 按钮是否显示：除小工具容器外始终显示，不可用时点击给出引导（隐藏按钮会让用户以为功能不存在） */
   const visible = computed(() => !IS_MINITOOL);

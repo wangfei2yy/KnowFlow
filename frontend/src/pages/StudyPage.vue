@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from "vue";
-import { useRouter } from "vue-router";
+import { ref, computed, onMounted, onBeforeUnmount, watch } from "vue";
+import { useRouter, useRoute } from "vue-router";
 import { useAppStore } from "@/stores/appStore";
 import { useCompanionStore } from "@/stores/companionStore";
 import { useDocumentStore } from "@/stores/documentStore";
@@ -9,10 +9,13 @@ import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import { type Flashcard } from "@/db/database";
 import {
   listFlashcards,
+  listDueCards,
   deleteFlashcard,
   markMastery,
+  setSuspended,
   type Mastery
 } from "@/services/flashcardService";
+import { useReviewStore } from "@/stores/reviewStore";
 import {
   ArrowLeft,
   ArrowRight,
@@ -21,11 +24,17 @@ import {
   FileText,
   Layers,
   List,
-  Filter
+  Filter,
+  Layers3,
+  PauseCircle,
+  PlayCircle,
+  CheckCircle2
 } from "lucide-vue-next";
 
 const router = useRouter();
+const route = useRoute();
 const appStore = useAppStore();
+const reviewStore = useReviewStore();
 const companionStore = useCompanionStore();
 const docStore = useDocumentStore();
 
@@ -33,6 +42,11 @@ const cards = ref<Flashcard[]>([]);
 
 // 视图：review（翻卡复习）/ list（列表管理）
 const viewMode = ref<"review" | "list">("review");
+
+// 复习队列：默认只复习「到期待复习」的卡片
+const queueMode = ref(route.query.mode !== "all");
+const queueIds = ref<string[]>([]);
+const queueStats = ref({ due: 0, overdue: 0, fresh: 0, todayDone: 0, pending: 0 });
 
 // 筛选与排序
 const filterCategoryId = ref(""); // 空 = 全部分类
@@ -50,8 +64,14 @@ interface CardWithMeta {
   categoryId: string;
   categoryName: string;
 }
+const baseCards = computed<Flashcard[]>(() => {
+  if (!queueMode.value) return cards.value;
+  const map = new Map(cards.value.map((c) => [c.id, c]));
+  return queueIds.value.map((id) => map.get(id)).filter((c): c is Flashcard => !!c);
+});
+
 const cardsWithMeta = computed<CardWithMeta[]>(() =>
-  cards.value.map((card) => {
+  baseCards.value.map((card) => {
     const doc = docStore.documents.find((d) => d.id === card.documentId);
     const catId = doc?.categoryId ?? "";
     const cat = docStore.categoryById(catId);
@@ -76,6 +96,9 @@ const filteredCards = computed(() => {
   if (filterCategoryId.value) {
     list = list.filter((m) => m.categoryId === filterCategoryId.value);
   }
+  // 队列模式保持调度顺序（逾期 → 到期 → 新卡），不受列表排序/熟悉度筛选影响
+  if (queueMode.value) return list;
+
   if (filterMastery.value !== "") {
     list = list.filter((m) => m.card.mastery === filterMastery.value);
   }
@@ -117,10 +140,26 @@ onMounted(async () => {
   // 先加载资料与分类，再加载卡片，确保卡片能正确关联分类
   await docStore.loadAll();
   await loadCards();
+  window.addEventListener("keydown", onKeydown);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener("keydown", onKeydown);
 });
 
 async function loadCards() {
   cards.value = await listFlashcards();
+  const buckets = await listDueCards();
+  queueIds.value = buckets.queue.map((c) => c.id);
+  queueStats.value = {
+    due: buckets.due,
+    overdue: buckets.overdue,
+    fresh: buckets.fresh,
+    todayDone: buckets.todayDone,
+    pending: buckets.pending
+  };
+  // 同步侧边栏 badge
+  void reviewStore.refresh();
   if (currentIndex.value >= reviewCards.value.length) currentIndex.value = 0;
   flipped.value = false;
 }
@@ -161,7 +200,13 @@ async function rate(mastery: Mastery) {
     companionStore.addAffection("reviewCard", "这张卡片你已经掌握啦，记忆力越来越强！🧠 好感度 +4");
   }
   await loadCards();
-  // 自动翻到下一张
+  if (queueMode.value) {
+    // 队列模式：刚评分的卡片已离开队列，索引保持不变即为下一张
+    flipped.value = false;
+    if (currentIndex.value >= total.value) currentIndex.value = Math.max(0, total.value - 1);
+    return;
+  }
+  // 全部卡片模式：自动翻到下一张
   if (currentIndex.value < total.value - 1) {
     next();
   } else {
@@ -176,6 +221,61 @@ async function rateFromList(m: CardWithMeta, mastery: Mastery) {
   }
   appStore.showToast("掌握度已更新", "success");
   await loadCards();
+}
+
+async function toggleSuspend(card: Flashcard) {
+  const next = !card.suspended;
+  await setSuspended(card.id, next);
+  appStore.showToast(next ? "已暂停复习，不再进入队列" : "已恢复复习", "success");
+  await loadCards();
+}
+
+/** 顶部进度百分比 */
+const progressPercent = computed(() =>
+  total.value === 0 ? 0 : Math.round(((currentIndex.value + 1) / total.value) * 100)
+);
+
+/** 下次复习时间的可读文案 */
+function nextReviewText(card: Flashcard): string {
+  if (!card.nextReviewAt) return "未安排";
+  const now = Date.now();
+  const ts = new Date(card.nextReviewAt).getTime();
+  if (Number.isNaN(ts)) return "未安排";
+  const diff = ts - now;
+  if (diff <= 0) return "待复习";
+  const days = Math.ceil(diff / DAY_MS_LOCAL);
+  if (days <= 1) {
+    const hours = Math.max(1, Math.round(diff / 3600000));
+    return hours < 24 ? `${hours} 小时后` : "明天";
+  }
+  return `${days} 天后`;
+}
+
+const DAY_MS_LOCAL = 24 * 3600 * 1000;
+
+/** 键盘快捷键：←/→ 翻页、空格翻面、1/2/3 标记 */
+function onKeydown(e: KeyboardEvent) {
+  if (viewMode.value !== "review") return;
+  const el = e.target as HTMLElement | null;
+  if (el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) return;
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+  if (e.key === "ArrowLeft") {
+    e.preventDefault();
+    prev();
+  } else if (e.key === "ArrowRight") {
+    e.preventDefault();
+    next();
+  } else if (e.key === " ") {
+    e.preventDefault();
+    flipped.value = !flipped.value;
+  } else if (e.key === "1") {
+    void rate(0);
+  } else if (e.key === "2") {
+    void rate(1);
+  } else if (e.key === "3") {
+    void rate(2);
+  }
 }
 
 function askDelete(card?: Flashcard) {
@@ -263,15 +363,63 @@ const masteryColor: Record<Mastery, string> = {
 
       <!-- 复习视图 -->
       <template v-if="viewMode === 'review'">
+        <!-- 队列切换 -->
+        <div class="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-slate-100 bg-white px-3 py-2 text-xs">
+          <button
+            class="flex items-center gap-1 rounded-full px-2.5 py-1 transition"
+            :class="queueMode ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
+            @click="queueMode = true"
+          >
+            <Layers3 :size="13" /> 复习队列 {{ queueStats.pending }}
+          </button>
+          <button
+            class="flex items-center gap-1 rounded-full px-2.5 py-1 transition"
+            :class="!queueMode ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
+            @click="queueMode = false"
+          >
+            <List :size="13" /> 全部卡片 {{ cards.length }}
+          </button>
+          <span v-if="queueStats.overdue" class="rounded-full bg-red-50 px-2 py-0.5 text-red-500">
+            逾期 {{ queueStats.overdue }}
+          </span>
+          <span v-if="queueStats.fresh" class="rounded-full bg-slate-100 px-2 py-0.5 text-slate-500">
+            新卡 {{ queueStats.fresh }}
+          </span>
+          <span class="ml-auto text-slate-400">今日已复习 {{ queueStats.todayDone }} 张</span>
+        </div>
+
         <EmptyState
           v-if="total === 0"
-          title="没有符合条件的卡片"
-          description="调整筛选条件，或换个熟悉度试试。"
+          :title="queueMode && cards.length > 0 ? '今天的复习都完成啦 🎉' : '没有符合条件的卡片'"
+          :description="
+            queueMode && cards.length > 0
+              ? `今日已复习 ${queueStats.todayDone} 张，明天再来继续吧。`
+              : '调整筛选条件，或换个熟悉度试试。'
+          "
         >
-          <button class="btn-secondary" @click="filterCategoryId = ''; filterMastery = ''; sortBy = 'createdAt'">清除筛选</button>
+          <button
+            v-if="queueMode && cards.length > 0"
+            class="btn-secondary"
+            @click="queueMode = false"
+          >
+            看看全部卡片
+          </button>
+          <button
+            v-else
+            class="btn-secondary"
+            @click="filterCategoryId = ''; filterMastery = ''; sortBy = 'createdAt'"
+          >
+            清除筛选
+          </button>
         </EmptyState>
 
         <template v-else>
+          <div class="mb-2 h-1 w-full overflow-hidden rounded-full bg-slate-100">
+            <div
+              class="h-full rounded-full bg-brand-500 transition-all"
+              :style="{ width: progressPercent + '%' }"
+            ></div>
+          </div>
           <div class="mb-4 flex items-center justify-between text-sm text-slate-500">
             <span>第 {{ currentIndex + 1 }} / {{ total }} 张</span>
             <span class="rounded px-2 py-0.5 text-xs" :class="masteryColor[currentCard!.mastery]">
@@ -283,13 +431,21 @@ const masteryColor: Record<Mastery, string> = {
             class="card relative flex min-h-[220px] cursor-pointer select-none flex-col items-center justify-center p-8 text-center transition hover:shadow-md"
             @click="flipped = !flipped"
           >
-            <button
-              v-if="currentCard"
-              class="absolute right-3 top-3 rounded p-1.5 text-slate-300 hover:bg-red-50 hover:text-red-500"
-              @click.stop="askDelete()"
-            >
-              <Trash2 :size="16" />
-            </button>
+            <div v-if="currentCard" class="absolute right-3 top-3 flex items-center gap-1">
+              <button
+                class="rounded p-1.5 text-slate-300 hover:bg-slate-100 hover:text-slate-600"
+                :title="currentCard.suspended ? '恢复复习' : '暂停复习'"
+                @click.stop="toggleSuspend(currentCard)"
+              >
+                <component :is="currentCard.suspended ? PlayCircle : PauseCircle" :size="16" />
+              </button>
+              <button
+                class="rounded p-1.5 text-slate-300 hover:bg-red-50 hover:text-red-500"
+                @click.stop="askDelete()"
+              >
+                <Trash2 :size="16" />
+              </button>
+            </div>
 
             <template v-if="currentCard">
               <div v-if="!flipped">
@@ -309,6 +465,9 @@ const masteryColor: Record<Mastery, string> = {
               <FileText :size="12" /> 来源：{{ currentMeta.docTitle }}
             </button>
             <span class="text-xs text-slate-400">· {{ currentMeta.categoryName }}</span>
+            <span v-if="currentCard" class="text-xs text-slate-400">
+              · 已复习 {{ currentCard.reviewCount }} 次 · {{ nextReviewText(currentCard) }}
+            </span>
           </div>
 
           <div v-if="currentCard" class="mt-5 grid grid-cols-3 gap-2">

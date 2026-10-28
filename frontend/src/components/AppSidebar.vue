@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, onMounted } from "vue";
 import { useRoute } from "vue-router";
 import { useDocumentStore } from "@/stores/documentStore";
 import { useAppStore } from "@/stores/appStore";
+import { useReviewStore } from "@/stores/reviewStore";
 import {
   Home,
   Library,
@@ -18,6 +19,12 @@ import {
 const route = useRoute();
 const docStore = useDocumentStore();
 const appStore = useAppStore();
+const reviewStore = useReviewStore();
+
+// 待复习数量：首屏加载一次，标记掌握后在 StudyPage 内刷新
+onMounted(() => {
+  void reviewStore.refresh();
+});
 
 /** 品牌图标（public/icons 下，随 base 走，兼容子路径部署） */
 const logoSrc = `${import.meta.env.BASE_URL}icons/icon-192.png`;
@@ -82,6 +89,14 @@ function onNavigate() {
       >
         <component :is="item.icon" :size="18" />
         <span>{{ item.label }}</span>
+        <span
+          v-if="item.path === '/study' && reviewStore.hasPending"
+          class="ml-auto rounded-full px-1.5 py-0.5 text-[11px] font-semibold leading-none"
+          :class="isActive(item.path) ? 'bg-brand-100 text-brand-700' : 'bg-red-50 text-red-500'"
+          :title="`待复习 ${reviewStore.pending} 张（逾期 ${reviewStore.overdue} 张）`"
+        >
+          {{ reviewStore.pending > 99 ? "99+" : reviewStore.pending }}
+        </span>
       </router-link>
     </nav>
 
