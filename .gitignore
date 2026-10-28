@@ -1,0 +1,40 @@
+# 依赖
+node_modules/
+frontend/node_modules/
+
+# 构建产物
+frontend/dist/
+frontend/dist-minitool/
+*.zip
+
+# 环境变量与密钥（示例文件除外）
+.env
+.env.*
+!.env.example
+backend/.env
+backend/.env.*
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# 编辑器 / IDE
+.idea/
+.vscode/
+
+# 冒烟测试生成的临时打包
+frontend/scripts/.smoke-*.mjs
+
+# 工具与缓存
+.vite/
+*.tsbuildinfo
+npm-debug.log*
+yarn-error.log*
+.DS_Store
+Thumbs.db
+
+# 智能体工作区数据与发布标记（本地数据，不入库）
+.workbuddy/
+.wbapp_*.genie

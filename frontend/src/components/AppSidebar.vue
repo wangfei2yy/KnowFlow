@@ -1,0 +1,99 @@
+<script setup lang="ts">
+import { computed } from "vue";
+import { useRoute } from "vue-router";
+import { useDocumentStore } from "@/stores/documentStore";
+import { useAppStore } from "@/stores/appStore";
+import {
+  Home,
+  Library,
+  Sparkles,
+  CheckSquare,
+  GraduationCap,
+  Upload,
+  Settings,
+  X,
+  HardDrive
+} from "lucide-vue-next";
+
+const route = useRoute();
+const docStore = useDocumentStore();
+const appStore = useAppStore();
+
+/** 品牌图标（public/icons 下，随 base 走，兼容子路径部署） */
+const logoSrc = `${import.meta.env.BASE_URL}icons/icon-192.png`;
+
+const navItems = [
+  { path: "/", label: "首页", icon: Home },
+  { path: "/library", label: "资料库", icon: Library },
+  { path: "/assistant", label: "AI 工作台", icon: Sparkles },
+  { path: "/tasks", label: "任务清单", icon: CheckSquare },
+  { path: "/study", label: "学习中心", icon: GraduationCap },
+  { path: "/import", label: "文件导入", icon: Upload },
+  { path: "/settings", label: "设置", icon: Settings }
+];
+
+function isActive(path: string): boolean {
+  if (path === "/") return route.path === "/";
+  return route.path.startsWith(path);
+}
+
+function onNavigate() {
+  appStore.sidebarOpen = false;
+}
+</script>
+
+<template>
+  <!-- 移动端遮罩 -->
+  <div
+    v-if="appStore.sidebarOpen"
+    class="fixed inset-0 z-30 bg-black/30 lg:hidden"
+    @click="appStore.sidebarOpen = false"
+  ></div>
+
+  <aside
+    class="fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-slate-100 bg-white transition-transform lg:translate-x-0"
+    :class="appStore.sidebarOpen ? 'translate-x-0' : '-translate-x-full'"
+  >
+    <!-- Logo -->
+    <div class="flex items-center gap-3 px-5 py-5">
+      <img
+        :src="logoSrc"
+        alt="知间 AI"
+        class="h-9 w-9 shrink-0 rounded-[10px] object-cover shadow-sm ring-1 ring-slate-100"
+      />
+      <div class="flex-1">
+        <div class="text-base font-semibold text-slate-900">知间 AI</div>
+        <div class="text-xs text-slate-400">KnowFlow</div>
+      </div>
+      <button class="text-slate-400 lg:hidden" @click="appStore.sidebarOpen = false">
+        <X :size="20" />
+      </button>
+    </div>
+
+    <!-- 导航 -->
+    <nav class="flex-1 space-y-1 overflow-y-auto px-3 py-2">
+      <router-link
+        v-for="item in navItems"
+        :key="item.path"
+        :to="item.path"
+        class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition"
+        :class="isActive(item.path) ? 'bg-brand-50 text-brand-700' : 'text-slate-600 hover:bg-slate-50'"
+        @click="onNavigate"
+      >
+        <component :is="item.icon" :size="18" />
+        <span>{{ item.label }}</span>
+      </router-link>
+    </nav>
+
+    <!-- 底部状态 -->
+    <div class="border-t border-slate-100 px-4 py-3">
+      <div class="flex items-center gap-2 text-xs text-slate-400">
+        <HardDrive :size="14" />
+        <span>本地模式 · 数据保存在浏览器</span>
+      </div>
+      <div class="mt-1.5 text-xs text-slate-400">
+        {{ docStore.totalCount }} 份资料 · {{ docStore.favoriteCount }} 份收藏
+      </div>
+    </div>
+  </aside>
+</template>
