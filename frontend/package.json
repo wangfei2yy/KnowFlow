@@ -1,7 +1,7 @@
 {
   "name": "knowflow",
   "private": true,
-  "version": "1.6.1",
+  "version": "1.6.2",
   "type": "module",
   "scripts": {
     "dev": "vite --config vite.config.ts",
@@ -33,7 +33,9 @@
     "test:idiom-page": "node scripts/run-idiom-page.mjs",
     "test:kitchen": "node scripts/run-kitchen.mjs",
     "build:food:seasons": "node scripts/extract-seasons.mjs",
-    "test:wordlearn": "node scripts/run-wordlearn.mjs"
+    "test:wordlearn": "node scripts/run-wordlearn.mjs",
+    "start": "node server.mjs",
+    "serve:prod": "vite build --config vite.config.ts && node server.mjs"
   },
   "dependencies": {
     "dexie": "^4.0.8",
