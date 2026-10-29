@@ -67,6 +67,18 @@ const routes = [
               name: "study-play-orb",
               component: () => import("@/pages/OrbPage.vue"),
               meta: { title: "单词球球" }
+            },
+            {
+              path: "play/idiom",
+              name: "study-play-idiom",
+              component: () => import("@/pages/IdiomGamePage.vue"),
+              meta: { title: "成语填空" }
+            },
+            {
+              path: "play/pair",
+              name: "study-play-pair",
+              component: () => import("@/pages/PairPage.vue"),
+              meta: { title: "中英配对" }
             }
           ])
     ]

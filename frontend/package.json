@@ -24,7 +24,9 @@
     "test:packs": "node scripts/smoke-packs.mjs",
     "build:food": "node scripts/build-food-packs.mjs",
     "test:food": "node scripts/smoke-food.mjs && node scripts/run-food-logic.mjs",
-    "test:food:logic": "node scripts/run-food-logic.mjs"
+    "test:food:logic": "node scripts/run-food-logic.mjs",
+    "test:idiom-game": "node scripts/run-idiom-game.mjs",
+    "test:pair-game": "node scripts/run-pair.mjs"
   },
   "dependencies": {
     "dexie": "^4.0.8",

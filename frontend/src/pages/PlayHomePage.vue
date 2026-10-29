@@ -60,16 +60,18 @@ const games: GameCard[] = [
   },
   {
     id: "idiom",
-    title: "成语接龙",
-    desc: "用上一个成语的末字接下一个",
+    title: "成语填空",
+    desc: "挖掉一个字，从候选里选回来",
     icon: Languages,
+    path: "/study/play/idiom",
     accent: "bg-amber-50 text-amber-600"
   },
   {
     id: "pair",
     title: "中英配对",
-    desc: "限时翻开卡片，把词和义连起来",
+    desc: "4×4 翻牌，把单词和释义凑成一对",
     icon: Shuffle,
+    path: "/study/play/pair",
     accent: "bg-sky-50 text-sky-600"
   }
 ];
@@ -114,6 +116,14 @@ function scoreText(g: GameCard): string {
   }
   if (g.id === "orb") {
     const s = gameScoreOf(gameProgress.value, "orb", packId.value);
+    return s.plays > 0 ? `最高 ${s.bestScore} 分 · ${s.plays} 局` : "还没玩过";
+  }
+  if (g.id === "idiom") {
+    const s = gameScoreOf(gameProgress.value, "idiom", "idiom");
+    return s.plays > 0 ? `最高 ${s.bestScore} 分 · ${s.plays} 局` : "还没玩过";
+  }
+  if (g.id === "pair") {
+    const s = gameScoreOf(gameProgress.value, "pair", packId.value);
     return s.plays > 0 ? `最高 ${s.bestScore} 分 · ${s.plays} 局` : "还没玩过";
   }
   return "即将上线";
