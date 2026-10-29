@@ -41,6 +41,12 @@ export async function updateDocument(id: string, patch: Partial<Document>): Prom
   );
 }
 
+/** 批量恢复（撤销删除用）：保留原 id 与时间戳 */
+export async function restoreDocuments(docs: Document[]): Promise<void> {
+  if (docs.length === 0) return;
+  await db.documents.bulkPut(docs.map((d) => toPlain(d)));
+}
+
 export async function deleteDocument(id: string): Promise<void> {
   await db.documents.delete(id);
 }

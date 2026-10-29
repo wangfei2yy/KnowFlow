@@ -15,3 +15,14 @@ export function downloadJSON(payload: BackupPayload, filename = "knowflow-backup
   a.click();
   URL.revokeObjectURL(url);
 }
+
+/** 触发浏览器下载任意文本文件（Markdown / CSV 等） */
+export function downloadText(text: string, filename: string, mime = "text/plain;charset=utf-8"): void {
+  const blob = new Blob([text], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}

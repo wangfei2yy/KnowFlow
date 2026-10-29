@@ -96,6 +96,30 @@ export const useDocumentStore = defineStore("document", {
       await docService.deleteDocument(id);
       await this.loadAll();
     },
+    /** 批量删除（返回被删资料，用于撤销） */
+    async bulkRemove(ids: string[]): Promise<Document[]> {
+      const removed = this.documents.filter((d) => ids.includes(d.id));
+      for (const d of removed) {
+        await docService.deleteDocument(d.id);
+      }
+      this.documents = this.documents.filter((d) => !ids.includes(d.id));
+      return removed;
+    },
+
+    /** 撤销批量删除：按原 id 恢复 */
+    async restoreSnapshot(docs: Document[]) {
+      await docService.restoreDocuments(docs);
+      await this.loadAll(false);
+    },
+
+    /** 批量改分类（传空表示未分类） */
+    async bulkUpdateCategory(ids: string[], categoryId: string) {
+      for (const id of ids) {
+        await docService.updateDocument(id, { categoryId: categoryId || undefined });
+      }
+      await this.loadAll(false);
+    },
+
     async toggleFavorite(id: string) {
       await docService.toggleFavorite(id);
       await this.loadAll();

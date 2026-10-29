@@ -6,3 +6,7 @@ import type { BackupPayload } from "@/utils/export";
 export function downloadJSON(_payload: BackupPayload, _filename?: string): void {
   throw new Error("小工具内不支持文件下载，请在网页版导出备份");
 }
+
+export function downloadText(_text: string, _filename: string, _mime?: string): void {
+  throw new Error("小工具内不支持文件下载，请在网页版导出");
+}

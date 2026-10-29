@@ -7,12 +7,21 @@ import { useCompanionStore } from "@/stores/companionStore";
 import { levelFromAffection, formFromAffection, FORM_NAMES } from "@/services/companion/types";
 import CompanionAvatar from "@/components/CompanionAvatar.vue";
 import { db } from "@/db/database";
-import { exportAll, validateBackup, importAll, type BackupPayload } from "@/utils/export";
+import {
+  exportAll,
+  validateBackup,
+  importAll,
+  documentsToMarkdown,
+  cardsToAnkiCsv,
+  type BackupPayload
+} from "@/utils/export";
+import { listFlashcards } from "@/services/flashcardService";
+import { downloadText } from "@/utils/download";
 import { downloadJSON } from "@/utils/download";
 import { IS_MINITOOL } from "@/utils/runtime";
 import { OpenAICompatibleProvider } from "@/services/ai/OpenAICompatibleProvider";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
-import { Download, Upload, Trash2, Sparkles, ShieldCheck, Info, ImagePlus, Loader2, CheckCircle2, AlertCircle } from "lucide-vue-next";
+import { Download, Upload, Trash2, Sparkles, ShieldCheck, Info, ImagePlus, Loader2, CheckCircle2, AlertCircle, FileText, Layers } from "lucide-vue-next";
 
 const aiStore = useAIStore();
 const docStore = useDocumentStore();
@@ -187,6 +196,30 @@ function saveAIConfig() {
         : "AI 配置已保存",
     "success"
   );
+}
+
+/** 导出全部资料为 Markdown（单文件，用分隔线拼接） */
+function handleExportMarkdown() {
+  if (docStore.documents.length === 0) {
+    appStore.showToast("还没有资料可导出", "info");
+    return;
+  }
+  const md = documentsToMarkdown(docStore.documents, (id) => docStore.categoryById(id)?.name);
+  const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  downloadText(md, `knowflow-docs-${stamp}.md`, "text/markdown;charset=utf-8");
+  appStore.showToast(`已导出 ${docStore.documents.length} 份资料`, "success");
+}
+
+/** 导出全部卡片为 Anki 可导入的 CSV */
+async function handleExportAnki() {
+  const cards = await listFlashcards();
+  if (cards.length === 0) {
+    appStore.showToast("还没有学习卡片", "info");
+    return;
+  }
+  const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  downloadText(cardsToAnkiCsv(cards), `knowflow-cards-${stamp}.csv`, "text/csv;charset=utf-8");
+  appStore.showToast(`已导出 ${cards.length} 张卡片`, "success");
 }
 
 function clearApiKey() {
@@ -563,6 +596,12 @@ async function clearAllData() {
       <div class="flex flex-wrap items-center gap-2">
         <button class="btn-secondary" @click="handleExport">
           <Download :size="16" /> 导出备份
+        </button>
+        <button class="btn-secondary" @click="handleExportMarkdown">
+          <FileText :size="16" /> 导出 Markdown
+        </button>
+        <button class="btn-secondary" @click="handleExportAnki">
+          <Layers :size="16" /> 导出 Anki CSV
         </button>
         <div class="flex items-center gap-2">
           <button class="btn-secondary" @click="triggerImport">

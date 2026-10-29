@@ -13,7 +13,8 @@
     "test:voice": "node scripts/run-voice.mjs",
     "test:cards": "node scripts/run-cards.mjs",
     "test:provider": "node scripts/run-provider.mjs",
-    "test:srs": "node scripts/run-srs.mjs"
+    "test:srs": "node scripts/run-srs.mjs",
+    "test:export": "node scripts/run-export.mjs"
   },
   "dependencies": {
     "dexie": "^4.0.8",

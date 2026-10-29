@@ -1,0 +1,20 @@
+import puppeteer from "puppeteer-core";
+const browser = await puppeteer.launch({ executablePath: "C:/Users/hangdong/AppData/Local/Google/Chrome/Application/chrome.exe", headless: "new", args: ["--no-sandbox", "--disable-gpu"] });
+const page = await browser.newPage();
+await page.setViewport({ width: 1280, height: 900, deviceScaleFactor: 2 });
+await page.goto("http://localhost:5195/#/library", { waitUntil: "networkidle0" });
+await new Promise((r) => setTimeout(r, 900));
+await page.evaluate(() => [...document.querySelectorAll("button")].find((b) => b.textContent.includes("选择"))?.click());
+await new Promise((r) => setTimeout(r, 300));
+const c = await page.evaluate(() => { const el = document.querySelectorAll(".grid > div")[0]; const r = el.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + 30 }; });
+await page.mouse.click(c.x, c.y);
+await new Promise((r) => setTimeout(r, 400));
+const style = await page.evaluate(() => {
+  const bar = [...document.querySelectorAll("div")].find((d) => d.textContent.includes("已选") && d.className.includes("fixed"));
+  const span = bar.children[0];
+  const cs = getComputedStyle(span);
+  return { text: span.textContent, color: cs.color, fontSize: cs.fontSize, opacity: cs.opacity, display: cs.display, bg: getComputedStyle(bar).backgroundColor };
+});
+console.log(JSON.stringify(style));
+await page.screenshot({ path: "C:/Users/hangdong/AppData/Local/Temp/m2-bar.png", clip: { x: 150, y: 700, width: 1000, height: 120 } });
+await browser.close();

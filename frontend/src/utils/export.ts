@@ -93,3 +93,54 @@ export async function importAll(data: BackupPayload, mode: "merge" | "replace"):
     }
   );
 }
+
+/* ------------------------- Markdown / Anki 导出 ------------------------- */
+
+const SOURCE_LABEL: Record<string, string> = {
+  note: "笔记",
+  text: "文本",
+  file: "文件",
+  web: "网页"
+};
+
+/** 单篇资料转为 Markdown */
+export function documentToMarkdown(doc: Document, categoryName?: string): string {
+  const lines: string[] = [`# ${doc.title}`, ""];
+  const meta: string[] = [`来源：${SOURCE_LABEL[doc.sourceType] ?? doc.sourceType}`];
+  if (categoryName) meta.push(`分类：${categoryName}`);
+  if (doc.tags?.length) meta.push(`标签：${doc.tags.join("、")}`);
+  meta.push(`创建于 ${new Date(doc.createdAt).toLocaleString("zh-CN")}`);
+  lines.push(`> ${meta.join(" · ")}`, "");
+
+  if (doc.summary) {
+    lines.push("## 摘要", "", doc.summary, "");
+  }
+  if (doc.keywords?.length) {
+    lines.push(`## 关键词`, "", doc.keywords.join("、"), "");
+  }
+  lines.push("## 正文", "", doc.content ?? "", "");
+  return lines.join("\n");
+}
+
+/** 多篇资料合并导出（用分隔线连接） */
+export function documentsToMarkdown(docs: Document[], categoryName?: (id?: string) => string | undefined): string {
+  const parts = docs.map((d) => documentToMarkdown(d, categoryName?.(d.categoryId)));
+  return parts.join("\n\n---\n\n");
+}
+
+function escapeCsvField(value: string): string {
+  const flat = (value ?? "").replace(/\r?\n/g, "<br>").replace(/"/g, '""');
+  return `"${flat}"`;
+}
+
+/**
+ * 卡片导出为 Anki 可导入的 CSV（两列：正面/背面）。
+ * 带 UTF-8 BOM，避免 Windows 版 Excel / Anki 打开中文乱码。
+ */
+export function cardsToAnkiCsv(cards: Flashcard[]): string {
+  const rows = ['"question","answer"'];
+  for (const c of cards) {
+    rows.push([escapeCsvField(c.question), escapeCsvField(c.answer)].join(","));
+  }
+  return "\ufeff" + rows.join("\r\n") + "\r\n";
+}
