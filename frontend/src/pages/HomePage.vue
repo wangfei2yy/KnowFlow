@@ -19,6 +19,7 @@ import {
   CheckSquare,
   Gamepad2,
   BookOpen,
+  ChefHat,
   ChevronRight
 } from "lucide-vue-next";
 
@@ -38,14 +39,17 @@ const allQuickActions = [
   { label: "资料问答", desc: "基于资料查找答案", icon: MessageCircleQuestion, to: "/assistant", color: "bg-emerald-50 text-emerald-600" },
   { label: "学习复习", desc: "把知识变成记忆卡片", icon: GraduationCap, to: "/study", color: "bg-amber-50 text-amber-600" },
   { label: "语法学习", desc: "50 个语法点，可生成卡片", icon: BookOpen, to: "/study/grammar", color: "bg-indigo-50 text-indigo-600" },
-  { label: "单词闯关", desc: "10 题一组，错词自动复习", icon: Gamepad2, to: "/study/quest", color: "bg-rose-50 text-rose-600" }
+  { label: "单词闯关", desc: "10 题一组，错词自动复习", icon: Gamepad2, to: "/study/quest", color: "bg-rose-50 text-rose-600" },
+  { label: "今天吃什么", desc: "生成一周菜单与购物清单", icon: ChefHat, to: "/kitchen/plan", color: "bg-orange-50 text-orange-600" }
 ];
 
 /** 端内无网络、知识包加载不了，语法与闯关两个快捷入口不渲染 */
 const quickActions = computed(() =>
   IS_MINITOOL
     ? allQuickActions.filter(
-        (a) => !a.to.startsWith("/study/grammar") && !a.to.startsWith("/study/quest")
+        (a) =>
+          !a.to.startsWith("/kitchen") &&
+          !["/study/grammar", "/study/idiom", "/study/quest"].includes(a.to)
       )
     : allQuickActions
 );

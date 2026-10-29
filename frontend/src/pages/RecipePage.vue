@@ -1,0 +1,252 @@
+<script setup lang="ts">
+/**
+ * 食谱库：24 道家常菜，按餐次筛选、搜索材料，详情可看步骤并加入任务清单。
+ * 数据来自 data/食谱 的三份 PDF，由 scripts/build-life-packs.mjs 编译。
+ */
+import { computed, onMounted, ref } from "vue";
+import {
+  Search,
+  X,
+  Loader2,
+  Clock,
+  CheckCircle2,
+  ListPlus,
+  ChefHat
+} from "lucide-vue-next";
+import { loadRecipes, type MealKey, type RecipeEntry } from "@/services/knowledgePack";
+import { useTaskStore } from "@/stores/taskStore";
+import { useAppStore } from "@/stores/appStore";
+
+const taskStore = useTaskStore();
+const appStore = useAppStore();
+
+const recipes = ref<RecipeEntry[]>([]);
+const loading = ref(true);
+const error = ref("");
+const keyword = ref("");
+const meal = ref<"" | MealKey>("");
+const active = ref<RecipeEntry | null>(null);
+const doneSteps = ref<Set<number>>(new Set());
+
+const MEALS: { key: "" | MealKey; label: string }[] = [
+  { key: "", label: "全部" },
+  { key: "breakfast", label: "早餐" },
+  { key: "lunch", label: "午餐" },
+  { key: "dinner", label: "晚餐" }
+];
+const MEAL_LABEL: Record<MealKey, string> = {
+  breakfast: "早餐",
+  lunch: "午餐",
+  dinner: "晚餐",
+  snack: "加餐"
+};
+
+onMounted(async () => {
+  try {
+    recipes.value = await loadRecipes();
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : "食谱加载失败";
+  } finally {
+    loading.value = false;
+  }
+});
+
+const filtered = computed(() => {
+  const kw = keyword.value.trim();
+  return recipes.value.filter((r) => {
+    if (meal.value && r.meal !== meal.value) return false;
+    if (!kw) return true;
+    return (
+      r.name.includes(kw) ||
+      r.materials.some((m) => m.includes(kw)) ||
+      r.tags.some((t) => t.includes(kw))
+    );
+  });
+});
+
+const mealCount = computed(() =>
+  MEALS.filter((m) => m.key).map((m) => ({
+    ...m,
+    count: recipes.value.filter((r) => r.meal === m.key).length
+  }))
+);
+
+function open(r: RecipeEntry) {
+  active.value = r;
+  doneSteps.value = new Set();
+}
+
+function toggleStep(idx: number) {
+  const next = new Set(doneSteps.value);
+  if (next.has(idx)) next.delete(idx);
+  else next.add(idx);
+  doneSteps.value = next;
+}
+
+/** 把这道菜的步骤变成一条任务，今天照着做 */
+async function addToTasks(r: RecipeEntry) {
+  try {
+    await taskStore.create({
+      title: `做一道：${r.name}`,
+      description: r.steps.map((s, i) => `${i + 1}. ${s}`).join("\n"),
+      priority: "medium"
+    });
+    appStore.showToast("已加入任务清单，今天照着做", "success");
+    active.value = null;
+  } catch (e) {
+    appStore.showToast(e instanceof Error ? e.message : "加入失败", "error");
+  }
+}
+</script>
+
+<template>
+  <div>
+    <!-- 工具条 -->
+    <div class="mb-4 flex flex-wrap items-center gap-2">
+      <div class="relative min-w-[200px] flex-1">
+        <Search :size="15" class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+        <input
+          v-model="keyword"
+          class="input-base pl-9"
+          placeholder="搜菜名或材料，如「茄子」「鸡蛋」"
+          aria-label="搜索食谱"
+        />
+        <button
+          v-if="keyword"
+          class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+          aria-label="清空搜索"
+          @click="keyword = ''"
+        >
+          <X :size="14" />
+        </button>
+      </div>
+      <div class="flex gap-1">
+        <button
+          v-for="m in MEALS"
+          :key="m.key"
+          class="rounded-full px-2.5 py-1 text-xs transition"
+          :class="meal === m.key ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
+          @click="meal = m.key"
+        >
+          {{ m.label }}
+          <span v-if="m.key" class="opacity-70">{{ mealCount.find((c) => c.key === m.key)?.count }}</span>
+        </button>
+      </div>
+    </div>
+
+    <div v-if="loading" class="card flex items-center gap-2 p-6 text-sm text-slate-500">
+      <Loader2 :size="16" class="animate-spin" /> 正在加载食谱…
+    </div>
+    <div v-else-if="error" class="card p-6 text-sm text-slate-500">{{ error }}</div>
+
+    <div v-else class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <button
+        v-for="r in filtered"
+        :key="r.id"
+        class="card flex flex-col items-start gap-2 p-4 text-left transition hover:shadow-md"
+        @click="open(r)"
+      >
+        <div class="flex w-full items-start gap-2">
+          <span class="text-base font-semibold text-slate-900">{{ r.name }}</span>
+          <span class="ml-auto shrink-0 rounded-full bg-brand-50 px-2 py-0.5 text-[11px] text-brand-600">
+            {{ MEAL_LABEL[r.meal] }}
+          </span>
+        </div>
+        <div class="flex flex-wrap gap-1">
+          <span
+            v-for="t in r.tags.slice(0, 3)"
+            :key="t"
+            class="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500"
+          >
+            {{ t }}
+          </span>
+        </div>
+        <div class="mt-auto flex items-center gap-3 text-[11px] text-slate-400">
+          <span class="flex items-center gap-1"><ChefHat :size="12" /> {{ r.materials.length || "—" }} 种材料</span>
+          <span class="flex items-center gap-1"><Clock :size="12" /> {{ r.steps.length }} 步</span>
+        </div>
+      </button>
+      <p v-if="filtered.length === 0" class="col-span-full py-10 text-center text-sm text-slate-400">
+        没有匹配的菜，换个材料试试
+      </p>
+    </div>
+
+    <!-- 详情弹层 -->
+    <div
+      v-if="active"
+      class="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center sm:p-4"
+      role="dialog"
+      aria-modal="true"
+      @click.self="active = null"
+    >
+      <div class="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-t-2xl bg-white p-5 shadow-2xl sm:rounded-2xl">
+        <div class="flex items-start gap-2">
+          <div>
+            <h2 class="text-xl font-bold text-slate-900">{{ active.name }}</h2>
+            <div class="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
+              <span class="rounded-full bg-brand-50 px-2 py-0.5 text-brand-600">{{ MEAL_LABEL[active.meal] }}</span>
+              <span v-for="t in active.tags" :key="t" class="rounded bg-slate-100 px-1.5 py-0.5">{{ t }}</span>
+            </div>
+          </div>
+          <button
+            class="ml-auto rounded p-1 text-slate-400 hover:bg-slate-100"
+            aria-label="关闭"
+            @click="active = null"
+          >
+            <X :size="18" />
+          </button>
+        </div>
+
+        <div v-if="active.materials.length" class="mt-4">
+          <div class="mb-2 text-xs font-medium text-slate-600">材料</div>
+          <div class="flex flex-wrap gap-1.5">
+            <span
+              v-for="m in active.materials"
+              :key="m"
+              class="rounded-lg bg-slate-50 px-2 py-1 text-xs text-slate-600"
+            >
+              {{ m }}
+            </span>
+          </div>
+        </div>
+
+        <div v-else class="mt-4 rounded-lg bg-slate-50 px-3 py-2 text-[11px] text-slate-500">
+          这道菜的原文没有单独列材料清单，做法里提到的用量按需准备。
+        </div>
+
+        <div class="mt-4">
+          <div class="mb-2 text-xs font-medium text-slate-600">做法</div>
+          <ol class="space-y-2">
+            <li
+              v-for="(s, i) in active.steps"
+              :key="i"
+              class="flex cursor-pointer items-start gap-2 rounded-lg px-2 py-1.5 transition hover:bg-slate-50"
+              @click="toggleStep(i)"
+            >
+              <span
+                class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px]"
+                :class="doneSteps.has(i) ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-500'"
+              >
+                <CheckCircle2 v-if="doneSteps.has(i)" :size="13" />
+                <template v-else>{{ i + 1 }}</template>
+              </span>
+              <span
+                class="text-sm leading-relaxed"
+                :class="doneSteps.has(i) ? 'text-slate-400 line-through' : 'text-slate-700'"
+              >
+                {{ s }}
+              </span>
+            </li>
+          </ol>
+        </div>
+
+        <div class="mt-5 flex gap-2">
+          <button class="btn-primary flex-1" @click="addToTasks(active)">
+            <ListPlus :size="14" /> 加入任务清单
+          </button>
+          <button class="btn-secondary" @click="active = null">关闭</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>

@@ -1,0 +1,287 @@
+<script setup lang="ts">
+/**
+ * 饮食计划：从食谱池按餐次生成 7 天 / 28 天菜单，附购物清单。
+ * 规则生成为主：同餐次最近两天不重复，忌口食材直接排除；不涉及营养计算（暂无营养数据）。
+ */
+import { computed, onMounted, ref } from "vue";
+import {
+  Loader2,
+  RefreshCw,
+  ShoppingBasket,
+  CalendarRange,
+  ListPlus,
+  ChevronDown,
+  AlertCircle
+} from "lucide-vue-next";
+import { loadRecipes, type MealKey, type RecipeEntry } from "@/services/knowledgePack";
+import { useTaskStore } from "@/stores/taskStore";
+import { useAppStore } from "@/stores/appStore";
+
+const taskStore = useTaskStore();
+const appStore = useAppStore();
+
+const recipes = ref<RecipeEntry[]>([]);
+const loading = ref(true);
+const error = ref("");
+
+const planDays = ref(7);
+const exclude = ref("");
+const generating = ref(false);
+const showList = ref(false);
+
+interface PlanMeal {
+  key: MealKey;
+  recipe: RecipeEntry;
+}
+interface PlanDay {
+  date: Date;
+  label: string;
+  meals: PlanMeal[];
+}
+
+const plan = ref<PlanDay[]>([]);
+
+const MEALS: MealKey[] = ["breakfast", "lunch", "dinner"];
+const MEAL_LABEL: Record<MealKey, string> = {
+  breakfast: "早",
+  lunch: "午",
+  dinner: "晚",
+  snack: "加餐"
+};
+const WEEK = ["日", "一", "二", "三", "四", "五", "六"];
+
+onMounted(async () => {
+  try {
+    recipes.value = await loadRecipes();
+    generate();
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : "食谱加载失败";
+  } finally {
+    loading.value = false;
+  }
+});
+
+/** 每个餐次可选数量，用来提示「早餐池太小会轮换」 */
+const poolSizes = computed(() => {
+  const map = {} as Record<MealKey, number>;
+  for (const key of MEALS) map[key] = recipes.value.filter((r) => r.meal === key).length;
+  return map;
+});
+
+/**
+ * 加权随机：带材料清单的菜权重 3（购物清单才完整），只写了做法的权重 1（保证菜色多样）。
+ * 硬性优先会让早餐只剩 3 道、午餐只剩 4 道反复出现。
+ */
+function pickOne(pool: RecipeEntry[], recent: string[]): RecipeEntry {
+  const fresh = pool.filter((r) => !recent.includes(r.id));
+  const list = fresh.length > 0 ? fresh : pool;
+  const bag: RecipeEntry[] = [];
+  for (const r of list) {
+    const weight = r.materials.length > 0 ? 3 : 1;
+    for (let i = 0; i < weight; i++) bag.push(r);
+  }
+  return bag[Math.floor(Math.random() * bag.length)];
+}
+
+function generate() {
+  if (recipes.value.length === 0) return;
+  generating.value = true;
+
+  const banned = exclude.value
+    .split(/[,，、\s]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const usable = recipes.value.filter(
+    (r) => !r.materials.some((m) => banned.some((b) => m.includes(b)))
+  );
+  if (usable.length === 0) {
+    appStore.showToast("忌口太多，没有可用的菜了，放宽一下试试", "info");
+    generating.value = false;
+    return;
+  }
+
+  const byMeal = {} as Record<MealKey, RecipeEntry[]>;
+  for (const key of MEALS) byMeal[key] = usable.filter((r) => r.meal === key);
+
+  const recent = {} as Record<MealKey, string[]>;
+  for (const key of MEALS) recent[key] = [];
+
+  const base = new Date();
+  base.setHours(0, 0, 0, 0);
+  const days: PlanDay[] = [];
+
+  for (let i = 0; i < planDays.value; i++) {
+    const date = new Date(base.getTime() + i * 86400000);
+    const meals: PlanMeal[] = [];
+    for (const key of MEALS) {
+      const pool = byMeal[key];
+      if (pool.length === 0) continue;
+      const recipe = pickOne(pool, recent[key]);
+      meals.push({ key, recipe });
+      // 最近两天不重复，池子小于 3 时自然轮换
+      recent[key] = [recipe.id, ...recent[key]].slice(0, 2);
+    }
+    days.push({
+      date,
+      label: `${date.getMonth() + 1}/${date.getDate()} 周${WEEK[date.getDay()]}`,
+      meals
+    });
+  }
+
+  plan.value = days;
+  generating.value = false;
+}
+
+/** 购物清单：所有天用到的材料去重计数 */
+const shopping = computed(() => {
+  const map = new Map<string, number>();
+  for (const day of plan.value) {
+    for (const m of day.meals) {
+      for (const mat of m.recipe.materials) {
+        map.set(mat, (map.get(mat) ?? 0) + 1);
+      }
+    }
+  }
+  return [...map.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "zh"));
+});
+
+/** 计划里没有材料清单的菜数（原始数据只有做法） */
+const noMaterialCount = computed(
+  () => plan.value.flatMap((d) => d.meals).filter((m) => m.recipe.materials.length === 0).length
+);
+
+/** 今天的三餐加进任务清单，照着做就行 */
+async function addTodayToTasks() {
+  const today = plan.value[0];
+  if (!today) return;
+  const names = today.meals.map((m) => m.recipe.name).join(" / ");
+  const detail = today.meals
+    .map((m) => `${MEAL_LABEL[m.key]}餐 · ${m.recipe.name}\n${m.recipe.steps.map((s, i) => `  ${i + 1}. ${s}`).join("\n")}`)
+    .join("\n\n");
+  try {
+    await taskStore.create({
+      title: `今日三餐：${names}`,
+      description: detail,
+      priority: "medium"
+    });
+    appStore.showToast("今日菜单已加入任务清单", "success");
+  } catch (e) {
+    appStore.showToast(e instanceof Error ? e.message : "加入失败", "error");
+  }
+}
+</script>
+
+<template>
+  <div>
+    <!-- 生成器 -->
+    <div class="card p-4">
+      <div class="flex flex-wrap items-end gap-3">
+        <div>
+          <div class="mb-1 text-xs text-slate-500">周期</div>
+          <div class="flex gap-1">
+            <button
+              v-for="d in [7, 28]"
+              :key="d"
+              class="rounded-full px-3 py-1.5 text-xs transition"
+              :class="planDays === d ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
+              @click="planDays = d"
+            >
+              {{ d === 7 ? "一周" : "四周" }}
+            </button>
+          </div>
+        </div>
+
+        <div class="min-w-[180px] flex-1">
+          <div class="mb-1 text-xs text-slate-500">忌口 / 不吃（逗号分隔）</div>
+          <input
+            v-model="exclude"
+            class="input-base"
+            placeholder="如：虾、花生、香菜"
+            aria-label="忌口食材"
+          />
+        </div>
+
+        <button class="btn-primary" :disabled="generating || loading" @click="generate">
+          <RefreshCw :size="14" :class="generating ? 'animate-spin' : ''" />
+          {{ plan.length ? "换一换" : "生成计划" }}
+        </button>
+      </div>
+
+      <p class="mt-2 flex items-start gap-1.5 text-[11px] text-slate-400">
+        <AlertCircle :size="12" class="mt-0.5 shrink-0" />
+        <span>
+          按「同餐次最近两天不重复」轮换，带材料清单的菜权重更高（购物清单更完整）；
+          原始菜谱里有一部分只写了做法，共 {{ recipes.length }} 道可选，早餐 {{ poolSizes.breakfast }} 道。
+          营养合计需要食材营养表，当前数据未包含。
+        </span>
+      </p>
+    </div>
+
+    <div v-if="loading" class="card mt-3 flex items-center gap-2 p-6 text-sm text-slate-500">
+      <Loader2 :size="16" class="animate-spin" /> 正在加载食谱…
+    </div>
+    <div v-else-if="error" class="card mt-3 p-6 text-sm text-slate-500">{{ error }}</div>
+
+    <template v-else-if="plan.length">
+      <!-- 概览 -->
+      <div class="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+        <span class="flex items-center gap-1">
+          <CalendarRange :size="13" /> {{ plan.length }} 天 ·
+          {{ plan.reduce((n, d) => n + d.meals.length, 0) }} 餐
+        </span>
+        <span class="flex items-center gap-1">
+          <ShoppingBasket :size="13" /> 共 {{ shopping.length }} 种材料
+          <span v-if="noMaterialCount" class="text-slate-400">
+            （{{ noMaterialCount }} 道菜未列材料）
+          </span>
+        </span>
+        <button class="ml-auto btn-secondary" @click="addTodayToTasks">
+          <ListPlus :size="14" /> 今日菜单加入任务
+        </button>
+      </div>
+
+      <!-- 每日菜单 -->
+      <div class="mt-3 space-y-2">
+        <div
+          v-for="(day, i) in plan"
+          :key="i"
+          class="card flex flex-wrap items-center gap-x-4 gap-y-1 p-3"
+          :class="i === 0 ? 'ring-1 ring-brand-200' : ''"
+        >
+          <div class="flex w-24 shrink-0 items-center gap-2">
+            <span class="text-xs font-medium text-slate-600">第 {{ i + 1 }} 天</span>
+            <span v-if="i === 0" class="rounded bg-brand-600 px-1.5 py-0.5 text-[10px] text-white">今天</span>
+          </div>
+          <span class="w-28 shrink-0 text-[11px] text-slate-400">{{ day.label }}</span>
+          <div class="flex flex-1 flex-wrap gap-x-4 gap-y-1">
+            <span v-for="m in day.meals" :key="m.key" class="text-xs text-slate-600">
+              <span class="mr-1 text-xs text-slate-400">{{ MEAL_LABEL[m.key] }}</span>
+              {{ m.recipe.name }}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 购物清单 -->
+      <div class="card mt-4 p-4">
+        <button class="flex w-full items-center gap-2 text-sm font-medium text-slate-700" @click="showList = !showList">
+          <ShoppingBasket :size="16" class="text-brand-600" />
+          购物清单（{{ shopping.length }} 种）
+          <ChevronDown :size="14" class="ml-auto transition" :class="showList ? 'rotate-180' : ''" />
+        </button>
+        <div v-if="showList" class="mt-3 flex flex-wrap gap-1.5">
+          <span
+            v-for="[name, count] in shopping"
+            :key="name"
+            class="rounded-lg bg-slate-50 px-2 py-1 text-xs text-slate-600"
+          >
+            {{ name }}
+            <span class="ml-0.5 text-[10px] text-slate-400">×{{ count }}</span>
+          </span>
+        </div>
+        <p v-else class="mt-2 text-[11px] text-slate-400">点开可看完整清单，数字表示出现在几餐里。</p>
+      </div>
+    </template>
+  </div>
+</template>

@@ -17,8 +17,9 @@
     "test:export": "node scripts/run-export.mjs",
     "test:search": "node scripts/run-search.mjs",
     "test:quest": "node scripts/run-quest.mjs",
-    "build:packs": "node scripts/build-packs.mjs",
-    "test:markdown": "node scripts/run-markdown.mjs"
+    "build:packs": "node scripts/build-packs.mjs && node scripts/build-life-packs.mjs",
+    "test:markdown": "node scripts/run-markdown.mjs",
+    "test:packs": "node scripts/smoke-packs.mjs"
   },
   "dependencies": {
     "dexie": "^4.0.8",

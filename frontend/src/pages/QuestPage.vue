@@ -59,7 +59,7 @@ async function start(packId: string) {
   }
   loading.value = true;
   try {
-    words.value = await loadWords(packId as "cet4" | "cet6");
+    words.value = await loadWords(packId);
     session.value = startSession(words.value, { size: 10, lives: 3 });
     phase.value = "playing";
     bankedCount.value = 0;
@@ -141,7 +141,7 @@ const accuracyText = computed(() =>
           <div class="flex w-full items-center justify-between">
             <span class="text-base font-semibold text-slate-900">{{ p.title }}</span>
             <span class="rounded-full bg-brand-50 px-2 py-0.5 text-xs text-brand-600">
-              {{ p.count }} 词
+              {{ p.count }} {{ p.id === "idiom" ? "条" : "词" }}
             </span>
           </div>
           <div class="text-xs text-slate-400">最高分 {{ progress[p.id]?.bestScore ?? 0 }} · 已玩 {{ progress[p.id]?.plays ?? 0 }} 次</div>
@@ -154,7 +154,7 @@ const accuracyText = computed(() =>
       <div class="card mt-4 flex items-center gap-3 p-4 text-sm text-slate-500">
         <BookOpen :size="18" class="shrink-0 text-brand-500" />
         <span>
-          词库来自内置的《四级/六级词汇·乱序版》。想背自己的词表？到
+          词库来自内置的《四级/六级词汇·乱序版》与常用成语。想背自己的词表？到
           <router-link to="/import" class="text-brand-600 hover:underline">导入</router-link>
           里上传 CSV 即可。
         </span>

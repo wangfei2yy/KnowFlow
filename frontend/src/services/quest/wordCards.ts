@@ -10,7 +10,8 @@ import type { WordEntry } from "@/services/quest/engine";
 const PACK_CATEGORY = "英语";
 const PACK_DOC_TITLE: Record<string, string> = {
   cet4: "四级词汇（闯关错词）",
-  cet6: "六级词汇（闯关错词）"
+  cet6: "六级词汇（闯关错词）",
+  idiom: "成语复习（闯关错词）"
 };
 
 /** 确保内置资料与分类存在，返回资料 id（卡片挂在这份资料下便于回溯） */
@@ -37,14 +38,20 @@ export async function ensurePackDocument(packId: string): Promise<string> {
 }
 
 /**
- * 把一个错词加入复习：已存在同名卡片则重置为「不熟悉」，否则新建后标记。
- * 返回 true 表示新建了卡片。
+ * 把一个词条加入复习。
+ * @param wrong true = 闯关答错（重置为「不熟悉」，10 分钟后重现）；
+ *              false = 主动加入（保持新卡状态，进「新卡」队列）
+ * @returns true 表示新建了卡片
  */
-export async function addWrongWordToReview(packId: string, word: WordEntry): Promise<boolean> {
+export async function addWordToReview(
+  packId: string,
+  word: WordEntry,
+  wrong = true
+): Promise<boolean> {
   const documentId = await ensurePackDocument(packId);
   const existing = (await db.flashcards.toArray()).find((c) => c.question === word.w);
   if (existing) {
-    await markMastery(existing.id, 0);
+    if (wrong) await markMastery(existing.id, 0);
     return false;
   }
   const card = await createFlashcard({
@@ -52,7 +59,10 @@ export async function addWrongWordToReview(packId: string, word: WordEntry): Pro
     question: word.w,
     answer: word.m
   });
-  // 答错 → 10 分钟后再次出现，直接进入今日复习队列
-  await markMastery(card.id, 0);
+  if (wrong) await markMastery(card.id, 0);
   return true;
 }
+
+/** 兼容旧调用名 */
+export const addWrongWordToReview = (packId: string, word: WordEntry) =>
+  addWordToReview(packId, word, true);

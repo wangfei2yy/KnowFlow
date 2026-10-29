@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-10-29T04:39:38.957Z",
+  "generatedAt": "2026-10-29T07:34:16.938Z",
   "packs": [
     {
       "id": "cet4",
@@ -25,6 +25,33 @@
       "count": 50,
       "bytes": 351819,
       "file": "grammar.json"
+    },
+    {
+      "id": "idiom",
+      "kind": "words",
+      "group": "zh",
+      "title": "常用成语",
+      "count": 172,
+      "bytes": 17226,
+      "file": "idiom.json"
+    },
+    {
+      "id": "recipes",
+      "kind": "docs",
+      "group": "life",
+      "title": "家常食谱",
+      "count": 121,
+      "bytes": 47768,
+      "file": "recipes.json"
+    },
+    {
+      "id": "seasons",
+      "kind": "docs",
+      "group": "life",
+      "title": "四季时令",
+      "count": 4,
+      "bytes": 1520,
+      "file": "seasons.json"
     }
   ]
 }

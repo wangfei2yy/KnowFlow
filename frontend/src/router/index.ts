@@ -38,6 +38,12 @@ const routes = [
               meta: { title: "语法学习" }
             },
             {
+              path: "idiom",
+              name: "study-idiom",
+              component: () => import("@/pages/IdiomPage.vue"),
+              meta: { title: "成语学习" }
+            },
+            {
               path: "quest",
               name: "study-quest",
               component: () => import("@/pages/QuestPage.vue"),
@@ -46,6 +52,35 @@ const routes = [
           ])
     ]
   },
+  // 饮食模块：食谱 / 时令 / 计划，依赖在线知识包
+  ...(IS_MINITOOL
+    ? []
+    : [
+        {
+          path: "/kitchen",
+          component: () => import("@/pages/KitchenLayout.vue"),
+          children: [
+            {
+              path: "",
+              name: "kitchen",
+              component: () => import("@/pages/RecipePage.vue"),
+              meta: { title: "食谱" }
+            },
+            {
+              path: "season",
+              name: "kitchen-season",
+              component: () => import("@/pages/SeasonPage.vue"),
+              meta: { title: "时令" }
+            },
+            {
+              path: "plan",
+              name: "kitchen-plan",
+              component: () => import("@/pages/PlanPage.vue"),
+              meta: { title: "饮食计划" }
+            }
+          ]
+        }
+      ]),
   { path: "/import", name: "import", component: () => import("@/pages/ImportPage.vue"), meta: { title: "文件导入" } },
   { path: "/settings", name: "settings", component: () => import("@/pages/SettingsPage.vue"), meta: { title: "设置" } }
 ];

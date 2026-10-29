@@ -19,6 +19,31 @@ export interface PackIndex {
   packs: PackMeta[];
 }
 
+/** 成语：w 成语 / m 释义 / from 出处 */
+export interface IdiomEntry {
+  w: string;
+  m: string;
+  from?: string;
+  len: number;
+}
+
+export type MealKey = "breakfast" | "lunch" | "dinner" | "snack";
+
+export interface RecipeEntry {
+  id: string;
+  name: string;
+  meal: MealKey;
+  materials: string[];
+  steps: string[];
+  tags: string[];
+}
+
+export interface SeasonEntry {
+  season: "春" | "夏" | "秋" | "冬";
+  vegetables: string[];
+  fruits: string[];
+}
+
 export interface GrammarTopic {
   id: string;
   title: string;
@@ -42,10 +67,22 @@ export function loadPackIndex(): Promise<PackIndex> {
   return fetchJSON<PackIndex>("index.json");
 }
 
-export function loadWords(id: "cet4" | "cet6"): Promise<WordEntry[]> {
+export function loadWords(id: string): Promise<WordEntry[]> {
   return fetchJSON<WordEntry[]>(`${id}.json`);
 }
 
 export function loadGrammar(): Promise<GrammarTopic[]> {
   return fetchJSON<GrammarTopic[]>("grammar.json");
+}
+
+export function loadIdioms(): Promise<IdiomEntry[]> {
+  return fetchJSON<IdiomEntry[]>("idiom.json");
+}
+
+export function loadRecipes(): Promise<RecipeEntry[]> {
+  return fetchJSON<RecipeEntry[]>("recipes.json");
+}
+
+export function loadSeasons(): Promise<SeasonEntry[]> {
+  return fetchJSON<SeasonEntry[]>("seasons.json");
 }

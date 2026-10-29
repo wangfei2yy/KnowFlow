@@ -13,6 +13,7 @@ import {
   GraduationCap,
   Gamepad2,
   BookOpen,
+  ChefHat,
   Upload,
   Settings,
   X,
@@ -67,10 +68,13 @@ const navItems: NavItem[] = [
         ? []
         : [
             { path: "/study/grammar", label: "语法学习" },
+            { path: "/study/idiom", label: "成语学习" },
             { path: "/study/quest", label: "单词闯关" }
           ])
     ]
   },
+  // 端内无网络，食谱/时令加载不了
+  ...(IS_MINITOOL ? [] : [{ path: "/kitchen", label: "饮食", icon: ChefHat }]),
   { path: "/import", label: "文件导入", icon: Upload },
   { path: "/settings", label: "设置", icon: Settings }
 ];

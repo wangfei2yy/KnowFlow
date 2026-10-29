@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useRoute } from "vue-router";
-import { LayoutDashboard, Layers, BookOpen, Gamepad2 } from "lucide-vue-next";
+import { LayoutDashboard, Layers, BookOpen, Languages, Gamepad2 } from "lucide-vue-next";
 import { useReviewStore } from "@/stores/reviewStore";
 import { IS_MINITOOL } from "@/utils/runtime";
 
@@ -19,13 +19,14 @@ interface Tab {
 const tabs = computed<Tab[]>(() => {
   const base: Tab[] = [
     { path: "/study", label: "概览", icon: LayoutDashboard },
-    { path: "/study/cards", label: "卡片复习", icon: Layers, badge: reviewStore.pending }
+    { path: "/study/cards", label: "复习", icon: Layers, badge: reviewStore.pending }
   ];
   if (IS_MINITOOL) return base;
   return [
     ...base,
-    { path: "/study/grammar", label: "语法学习", icon: BookOpen },
-    { path: "/study/quest", label: "单词闯关", icon: Gamepad2 }
+    { path: "/study/grammar", label: "语法", icon: BookOpen },
+    { path: "/study/idiom", label: "成语", icon: Languages },
+    { path: "/study/quest", label: "闯关", icon: Gamepad2 }
   ];
 });
 

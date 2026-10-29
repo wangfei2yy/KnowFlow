@@ -7,7 +7,8 @@
 
 export interface WordEntry {
   w: string;
-  p: string;
+  /** 音标：成语没有，单词才有 */
+  p?: string;
   m: string;
 }
 
