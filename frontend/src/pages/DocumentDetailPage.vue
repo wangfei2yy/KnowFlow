@@ -9,6 +9,7 @@ import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import { SOURCE_TYPE_LABEL } from "@/types/document";
 import { TASK_STATUS_LABEL } from "@/types/task";
 import { formatDate } from "@/utils/format";
+import { renderMarkdown, looksLikeMarkdown } from "@/utils/markdown";
 import { summarizeDocument } from "@/services/ai/aiService";
 import type { SummaryResult } from "@/types/ai";
 import {
@@ -40,6 +41,10 @@ const doc = computed(() => docStore.documents.find((d) => d.id === route.params.
 const category = computed(() => docStore.categoryById(doc.value?.categoryId));
 
 // 关联任务
+/** 正文是否为 Markdown（语法资料、导入的 md 文件） */
+const isMarkdown = computed(() => !!doc.value && looksLikeMarkdown(doc.value.content ?? ""));
+const contentHtml = computed(() => (doc.value ? renderMarkdown(doc.value.content ?? "") : ""));
+
 const relatedTasks = computed(() =>
   taskStore.tasks.filter((t) => t.sourceDocumentId === route.params.id)
 );
@@ -182,9 +187,10 @@ function comingSoon(name: string) {
           <p class="text-sm leading-relaxed text-slate-700">{{ doc.summary }}</p>
         </div>
 
-        <!-- 正文 -->
+        <!-- 正文：导入的语法等 Markdown 资料渲染成富文本（表格/标题），普通笔记保持纯文本换行 -->
         <div class="mt-5">
-          <div class="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">{{ doc.content }}</div>
+          <div v-if="isMarkdown" class="md-body" v-html="contentHtml"></div>
+          <div v-else class="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">{{ doc.content }}</div>
         </div>
       </div>
 

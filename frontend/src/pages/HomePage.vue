@@ -17,6 +17,7 @@ import {
   CalendarDays,
   CheckSquare,
   Gamepad2,
+  BookOpen,
   ChevronRight
 } from "lucide-vue-next";
 
@@ -35,6 +36,7 @@ const quickActions = [
   { label: "AI 整理", desc: "提炼重点与行动项", icon: Sparkles, to: "/assistant", color: "bg-violet-50 text-violet-600" },
   { label: "资料问答", desc: "基于资料查找答案", icon: MessageCircleQuestion, to: "/assistant", color: "bg-emerald-50 text-emerald-600" },
   { label: "学习复习", desc: "把知识变成记忆卡片", icon: GraduationCap, to: "/study", color: "bg-amber-50 text-amber-600" },
+  { label: "语法学习", desc: "50 个语法点，可生成卡片", icon: BookOpen, to: "/grammar", color: "bg-indigo-50 text-indigo-600" },
   { label: "单词闯关", desc: "10 题一组，错词自动复习", icon: Gamepad2, to: "/quest", color: "bg-rose-50 text-rose-600" }
 ];
 

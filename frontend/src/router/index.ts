@@ -14,7 +14,7 @@ const routes = [
   { path: "/settings", name: "settings", component: () => import("@/pages/SettingsPage.vue"), meta: { title: "设置" } }
 ];
 
-// 单词闯关依赖在线词库，端内不注册该路由（也就不会把它打进产物）
+// 闯关与语法学习都依赖在线知识包（fetch），端内不注册路由（也就不会打进产物）
 const extraRoutes = IS_MINITOOL
   ? []
   : [
@@ -23,6 +23,12 @@ const extraRoutes = IS_MINITOOL
         name: "quest",
         component: () => import("@/pages/QuestPage.vue"),
         meta: { title: "单词闯关" }
+      },
+      {
+        path: "/grammar",
+        name: "grammar",
+        component: () => import("@/pages/GrammarPage.vue"),
+        meta: { title: "语法学习" }
       }
     ];
 
