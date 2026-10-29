@@ -43,7 +43,7 @@ const routes = [
               component: () => import("@/pages/IdiomPage.vue"),
               meta: { title: "成语学习" }
             },
-            // 快乐学习 → 具体玩法。球球是全屏 Canvas，单独一个页面，不塞进列表页
+            // 趣味学习 → 具体玩法。球球是全屏 Canvas，单独一个页面，不塞进列表页
             {
               path: "words",
               name: "study-words",
@@ -54,7 +54,7 @@ const routes = [
               path: "play",
               name: "study-play",
               component: () => import("@/pages/PlayHomePage.vue"),
-              meta: { title: "快乐学习" }
+              meta: { title: "趣味学习" }
             },
             {
               path: "play/quest",

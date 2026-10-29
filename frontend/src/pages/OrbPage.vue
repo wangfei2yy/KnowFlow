@@ -312,7 +312,7 @@ const bestTierName = computed(() => (result.value ? tierName(result.value.tier) 
         class="flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700"
         @click="router.push('/study/play')"
       >
-        <ArrowLeft :size="15" /> 快乐学习
+        <ArrowLeft :size="15" /> 趣味学习
       </button>
       <span class="text-xs text-slate-400">
         {{ packTitle }} · 吃对变大，吃错掉命
@@ -449,7 +449,7 @@ const bestTierName = computed(() => (result.value ? tierName(result.value.tier) 
 
           <div class="mt-5 flex flex-wrap justify-center gap-2">
             <button class="btn-secondary" @click="changePack">换个词库</button>
-            <button class="btn-secondary" @click="router.push('/study/play')">快乐学习</button>
+            <button class="btn-secondary" @click="router.push('/study/play')">趣味学习</button>
             <button class="btn-primary" @click="replay"><RotateCcw :size="15" /> 再来一局</button>
           </div>
         </div>

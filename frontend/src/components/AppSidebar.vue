@@ -70,7 +70,7 @@ const navItems: NavItem[] = [
             { path: "/study/grammar", label: "语法学习" },
             { path: "/study/idiom", label: "成语学习" },
             { path: "/study/words", label: "单词学习" },
-            { path: "/study/play", label: "快乐学习" }
+            { path: "/study/play", label: "趣味学习" }
           ])
     ]
   },

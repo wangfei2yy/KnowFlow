@@ -15,7 +15,7 @@ interface Tab {
   badge?: number;
 }
 
-/** 端内没有知识包（无网络），语法 / 成语 / 单词 / 快乐学习四个 Tab 不出现 */
+/** 端内没有知识包（无网络），语法 / 成语 / 单词 / 趣味学习四个 Tab 不出现 */
 const tabs = computed<Tab[]>(() => {
   const base: Tab[] = [
     { path: "/study", label: "概览", icon: LayoutDashboard },
@@ -27,13 +27,13 @@ const tabs = computed<Tab[]>(() => {
     { path: "/study/grammar", label: "语法", icon: BookOpen },
     { path: "/study/idiom", label: "成语", icon: Languages },
     { path: "/study/words", label: "单词", icon: SpellCheck },
-    { path: "/study/play", label: "快乐学习", icon: Gamepad2 }
+    { path: "/study/play", label: "趣味学习", icon: Gamepad2 }
   ];
 });
 
 /**
  * 概览是父路径，必须精确匹配，否则所有子路由都会点亮它；
- * 快乐学习下面还挂着 /play/quest、/play/orb，要用前缀匹配。
+ * 趣味学习下面还挂着 /play/quest、/play/orb，要用前缀匹配。
  */
 function isActive(path: string): boolean {
   if (path === "/study") return route.path === "/study";

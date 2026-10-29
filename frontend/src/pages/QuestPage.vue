@@ -68,7 +68,7 @@ onMounted(async () => {
     console.warn("[KnowFlow] 词库索引加载失败：", e);
   }
 
-  // 从快乐学习进来时会带 ?pack=cet6：直接开局（有存档就续上），少点一次
+  // 从趣味学习进来时会带 ?pack=cet6：直接开局（有存档就续上），少点一次
   const q = route.query.pack as string | undefined;
   if (q && !IS_MINITOOL) {
     await start(q, !!resumeOf(q));
@@ -316,7 +316,7 @@ const accuracyText = computed(() =>
 
         <div class="mt-5 flex flex-wrap justify-center gap-2">
           <button class="btn-secondary" @click="backToLobby">换个词库</button>
-          <button class="btn-secondary" @click="router.push('/study/play')">返回快乐学习</button>
+          <button class="btn-secondary" @click="router.push('/study/play')">返回趣味学习</button>
           <button class="btn-primary" @click="retry">
             <RotateCcw :size="16" /> 再来一局
           </button>
