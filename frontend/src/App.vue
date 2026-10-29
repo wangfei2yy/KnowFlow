@@ -4,6 +4,7 @@ import AppSidebar from "@/components/AppSidebar.vue";
 import Toast from "@/components/Toast.vue";
 import CompanionWidget from "@/components/CompanionWidget.vue";
 import GlobalSearch from "@/components/GlobalSearch.vue";
+import BottomNav from "@/components/BottomNav.vue";
 import { useDocumentStore } from "@/stores/documentStore";
 import { useAppStore } from "@/stores/appStore";
 import { Menu, Search } from "lucide-vue-next";
@@ -16,6 +17,7 @@ const logoSrc = `${import.meta.env.BASE_URL}icons/icon-192.png`;
 
 onMounted(() => {
   docStore.loadAll();
+  appStore.initTheme();
 });
 
 /** 移动端顶栏搜索按钮：转交给 GlobalSearch 处理 */
@@ -26,6 +28,7 @@ function openSearch() {
 
 <template>
   <div class="flex min-h-screen">
+    <a href="#main" class="skip-link">跳到主要内容</a>
     <AppSidebar />
 
     <div class="flex min-w-0 flex-1 flex-col lg:pl-64">
@@ -45,7 +48,7 @@ function openSearch() {
         </button>
       </header>
 
-      <main class="flex-1">
+      <main id="main" class="flex-1 pb-16 lg:pb-0">
         <router-view />
       </main>
     </div>
@@ -54,6 +57,9 @@ function openSearch() {
     <div class="fixed right-4 top-4 z-50 flex flex-col gap-2">
       <Toast />
     </div>
+
+    <!-- 移动端底部导航 -->
+    <BottomNav />
 
     <!-- 全局搜索（⌘K / Ctrl+K） -->
     <GlobalSearch />

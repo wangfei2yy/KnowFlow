@@ -13,7 +13,9 @@ import {
   Upload,
   Settings,
   X,
-  HardDrive
+  HardDrive,
+  Sun,
+  Moon
 } from "lucide-vue-next";
 
 const route = useRoute();
@@ -72,7 +74,11 @@ function onNavigate() {
         <div class="text-base font-semibold text-slate-900">知间 AI</div>
         <div class="text-xs text-slate-400">KnowFlow</div>
       </div>
-      <button class="text-slate-400 lg:hidden" @click="appStore.sidebarOpen = false">
+      <button
+        class="text-slate-400 lg:hidden"
+        aria-label="关闭侧边栏"
+        @click="appStore.sidebarOpen = false"
+      >
         <X :size="20" />
       </button>
     </div>
@@ -102,6 +108,14 @@ function onNavigate() {
 
     <!-- 底部状态 -->
     <div class="border-t border-slate-100 px-4 py-3">
+      <button
+        class="mb-2 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-slate-500 transition hover:bg-slate-50"
+        :aria-label="appStore.isDark ? '切换到浅色模式' : '切换到深色模式'"
+        @click="appStore.toggleDark()"
+      >
+        <component :is="appStore.isDark ? Sun : Moon" :size="15" />
+        {{ appStore.isDark ? "浅色模式" : "深色模式" }}
+      </button>
       <div class="flex items-center gap-2 text-xs text-slate-400">
         <HardDrive :size="14" />
         <span>本地模式 · 数据保存在浏览器</span>

@@ -164,6 +164,12 @@ const formName = computed(() => FORM_NAMES[form.value]);
 // ---------- 拖动 ----------
 // 悬浮按钮位置（右下角），单位 px；用 bottom/right 表达
 const pos = ref({ bottom: 20, right: 20 });
+/** 移动端底部导航高度：悬浮球需上移，避免遮挡 Tab */
+const navOffset = ref(0);
+
+function syncNavOffset() {
+  navOffset.value = typeof window !== "undefined" && window.innerWidth < 1024 ? 60 : 0;
+}
 const dragging = ref(false);
 // 拖动起点（用于判断是否真的移动了）
 const startPos = ref({ x: 0, y: 0 });
@@ -244,6 +250,8 @@ function maybeHintUnsupportedBrowser() {
 }
 
 onMounted(() => {
+  syncNavOffset();
+  window.addEventListener("resize", syncNavOffset);
   window.addEventListener("resize", clampPos);
   // 触摸设备（手机/平板）用点按式录音，鼠标端保留按住说话
   try {
@@ -330,7 +338,7 @@ function scrollBottom() {
   <div
     v-if="store.enabled"
     class="fixed z-40"
-    :style="{ right: pos.right + 'px', bottom: pos.bottom + 'px' }"
+    :style="{ right: pos.right + 'px', bottom: pos.bottom + navOffset + 'px' }"
     :class="dragging ? 'cursor-grabbing select-none' : ''"
   >
     <!-- 鼓励气泡（绝对定位，不挤占按钮） -->
@@ -484,6 +492,7 @@ function scrollBottom() {
                   : 'border-slate-200 bg-slate-50 text-slate-300'
             "
             :title="voiceButtonTitle"
+            :aria-label="voiceButtonTitle"
             @pointerdown="voiceDown"
             @pointermove="voiceMove"
             @pointerup="voiceUp"

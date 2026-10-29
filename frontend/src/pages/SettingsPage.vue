@@ -21,7 +21,7 @@ import { downloadJSON } from "@/utils/download";
 import { IS_MINITOOL } from "@/utils/runtime";
 import { OpenAICompatibleProvider } from "@/services/ai/OpenAICompatibleProvider";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
-import { Download, Upload, Trash2, Sparkles, ShieldCheck, Info, ImagePlus, Loader2, CheckCircle2, AlertCircle, FileText, Layers } from "lucide-vue-next";
+import { Download, Upload, Trash2, Sparkles, ShieldCheck, Info, ImagePlus, Loader2, CheckCircle2, AlertCircle, FileText, Layers, Sun } from "lucide-vue-next";
 
 const aiStore = useAIStore();
 const docStore = useDocumentStore();
@@ -73,6 +73,13 @@ const speechKey = ref(aiStore.speechKey ?? "");
 const speechRemember = ref(aiStore.speechRemember);
 const showSpeechKey = ref(false);
 const maskedSpeechKey = computed(() => maskKey(aiStore.speechKey));
+
+/** 主题选项 */
+const themeOptions = [
+  { value: "light" as const, label: "浅色" },
+  { value: "dark" as const, label: "深色" },
+  { value: "system" as const, label: "跟随系统" }
+];
 
 /** 一键填入国内可直连的语音转写服务（硅基流动 SenseVoice） */
 function applySpeechPreset() {
@@ -582,6 +589,26 @@ async function clearAllData() {
           <span>{{ testResult.message }}</span>
         </div>
       </div>
+    </div>
+
+    <!-- 外观 -->
+    <div v-if="!IS_MINITOOL" class="card mt-4 p-5">
+      <div class="mb-3 flex items-center gap-2">
+        <Sun :size="18" class="text-brand-600" />
+        <h2 class="font-semibold text-slate-800">外观</h2>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <button
+          v-for="t in themeOptions"
+          :key="t.value"
+          class="rounded-full px-3 py-1.5 text-xs transition"
+          :class="appStore.theme === t.value ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
+          @click="appStore.setTheme(t.value)"
+        >
+          {{ t.label }}
+        </button>
+      </div>
+      <p class="mt-2 text-xs text-slate-400">「跟随系统」会随手机/电脑的深色设置自动切换。</p>
     </div>
 
     <!-- 数据备份 -->

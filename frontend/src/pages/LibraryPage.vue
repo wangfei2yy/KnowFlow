@@ -14,6 +14,7 @@ import SearchBar from "@/components/SearchBar.vue";
 import DocumentCard from "@/components/DocumentCard.vue";
 import EmptyState from "@/components/EmptyState.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
+import SkeletonCard from "@/components/SkeletonCard.vue";
 import {
   Plus,
   Star,
@@ -270,8 +271,12 @@ async function runBatchGenerate() {
     </div>
 
     <!-- 列表 -->
+    <div v-if="docStore.loading && docStore.documents.length === 0" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <SkeletonCard v-for="i in 6" :key="i" />
+    </div>
+
     <EmptyState
-      v-if="docStore.documents.length === 0"
+      v-else-if="docStore.documents.length === 0"
       title="还没有资料"
       description="从记录第一条知识开始，或加载示例资料快速体验完整流程。"
     >
