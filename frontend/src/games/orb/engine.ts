@@ -15,10 +15,10 @@ export type { WordEntry };
 export const ORB = {
   /** 初始半径 */
   startR: 40,
-  /** 食物球半径 */
-  foodR: 19,
-  /** 场上食物球数量 */
-  foodCount: 14,
+  /** 食物球半径（屏幕上要放得下英文单词，太小会看不清） */
+  foodR: 27,
+  /** 场上食物球数量：之前 14 个太密，选项一多反而难找 */
+  foodCount: 10,
   /** 吃对放大倍率（复利） */
   grow: 1.08,
   /** 吃错缩小倍率 */
@@ -135,7 +135,8 @@ export function cameraScale(r: number): number {
 
 /** 场上食物分布半径：随球长大一起外扩，避免"球大了却没东西吃" */
 export function fieldRadius(r: number): number {
-  return 560 + r * 1.7;
+  // 球少了，场地也收一点，保持「球间距」和之前接近，不至于让人满地图找
+  return 450 + r * 1.7;
 }
 
 /** 当前半径下的移动速度 */

@@ -151,20 +151,28 @@ export function createOrbRenderer(canvas: HTMLCanvasElement): OrbRenderer {
     ctx.globalAlpha = 1;
   }
 
-  /** 按可用宽度挑字号，实在放不下就截断加省略号 */
-  function fitText(text: string, maxWidth: number, base: number, min = 8): { size: number; text: string } {
-    let size = base;
-    while (size > min) {
-      ctx.font = `600 ${size}px ${FONT_STACK}`;
-      if (ctx.measureText(text).width <= maxWidth) return { size, text };
-      size -= 1;
-    }
-    ctx.font = `600 ${min}px ${FONT_STACK}`;
-    let out = text;
-    while (out.length > 1 && ctx.measureText(`${out}…`).width > maxWidth) {
-      out = out.slice(0, -1);
-    }
-    return { size: min, text: out === text ? text : `${out}…` };
+  const fontOf = (size: number) => `600 ${size}px ${FONT_STACK}`;
+
+  /**
+   * 给食物球排英文单词：先试单行逐级缩字号，长词（≥11 字母）拆两行，
+   * 实在放不下才截断加省略号。
+   *
+   * 为什么不按单词长度改球的大小：那会变成「看球大小猜答案」，干扰项就白设计了。
+   */
+  function layoutWord(
+    text: string,
+    maxWidth: number,
+    maxFont: number,
+    minFont = 9
+  ): { lines: string[]; size: number } {
+    return layoutWordWithMeasure(text, maxWidth, maxFont, minFont, (t, size) =>
+      widthOfText(t, size)
+    );
+  }
+
+  function widthOfText(t: string, size: number): number {
+    ctx.font = fontOf(size);
+    return ctx.measureText(t).width;
   }
 
   /** 中文按字折行，最多两行 */
@@ -221,8 +229,8 @@ export function createOrbRenderer(canvas: HTMLCanvasElement): OrbRenderer {
   function drawFood(f: Food, scale: number, px: number, py: number, halfW: number, halfH: number) {
     const sx = halfW + (f.x - px) * scale;
     const sy = halfH + (f.y - py) * scale;
-    // 缩得再远也要留住可读性：视觉半径设 13px 下限（略大于真实碰撞半径）
-    const r = Math.max(13, f.r * scale);
+    // 缩得再远也要留住可读性：屏幕半径不低于 24px（英文单词才放得下）
+    const r = Math.max(24, f.r * scale);
     if (sx < -r * 3 || sy < -r * 3 || sx > width + r * 3 || sy > height + r * 3) return;
 
     ctx.beginPath();
@@ -233,13 +241,17 @@ export function createOrbRenderer(canvas: HTMLCanvasElement): OrbRenderer {
     ctx.strokeStyle = "#cbd5e1";
     ctx.stroke();
 
-    const maxWidth = r * 1.85;
-    const { size, text } = fitText(f.word, maxWidth, Math.min(18, Math.max(9, r * 0.62)), 8);
-    ctx.font = `600 ${size}px ${FONT_STACK}`;
+    const { lines, size } = layoutWord(f.word, r * 1.72, Math.min(20, Math.max(11, r * 0.62)));
+    ctx.font = fontOf(size);
     ctx.fillStyle = "#1e293b";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(text, sx, sy + 0.5);
+    if (lines.length === 1) {
+      ctx.fillText(lines[0], sx, sy + 0.5);
+    } else {
+      const lh = size * 1.12;
+      lines.forEach((line, i) => ctx.fillText(line, sx, sy - lh / 2 + i * lh + 0.5));
+    }
   }
 
   function drawPlayer(state: OrbState, scale: number, halfW: number, halfH: number) {
@@ -332,4 +344,38 @@ export function createOrbRenderer(canvas: HTMLCanvasElement): OrbRenderer {
 /** 层级名（HUD 与提示条共用） */
 export function tierName(tier: number): string {
   return TIERS[Math.max(0, Math.min(TIERS.length - 1, tier))].name;
+}
+
+/**
+ * 单词排版的纯逻辑（从 render 里抽出来，方便单测）：
+ * 先单行逐级缩字号 → 长词拆两行 → 兜底截断。
+ * `measure` 是「给定文本与字号 → 宽度」的回调，注入便于脱离 canvas 测试。
+ */
+export interface WordLayout {
+  lines: string[];
+  size: number;
+}
+
+export function layoutWordWithMeasure(
+  text: string,
+  maxWidth: number,
+  maxFont: number,
+  minFont: number,
+  measure: (text: string, size: number) => number
+): WordLayout {
+  for (let size = Math.round(maxFont); size >= minFont; size--) {
+    if (measure(text, size) <= maxWidth) return { lines: [text], size };
+  }
+
+  if (text.length >= 11) {
+    const mid = Math.ceil(text.length / 2);
+    const lines = [text.slice(0, mid), text.slice(mid)];
+    for (let size = Math.round(maxFont * 0.92); size >= minFont; size--) {
+      if (lines.every((line) => measure(line, size) <= maxWidth)) return { lines, size };
+    }
+  }
+
+  let out = text;
+  while (out.length > 1 && measure(`${out}…`, minFont) > maxWidth) out = out.slice(0, -1);
+  return { lines: [out === text ? text : `${out}…`], size: minFont };
 }
