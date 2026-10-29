@@ -4,7 +4,7 @@
 import { db } from "@/db/database";
 import { createDocument, listDocuments } from "@/services/documentService";
 import { createCategory, listCategories } from "@/services/categoryService";
-import { createFlashcard, markMastery } from "@/services/flashcardService";
+import { createFlashcard, listFlashcards, markMastery } from "@/services/flashcardService";
 import type { WordEntry } from "@/services/quest/engine";
 
 const PACK_CATEGORY = "英语";
@@ -83,3 +83,17 @@ export async function addWordToReview(
 /** 兼容旧调用名 */
 export const addWrongWordToReview = (packId: string, word: WordEntry) =>
   addWordToReview(packId, word, true);
+
+/**
+ * 把已经进过复习队列的词标记为「已掌握」（不必再按遗忘曲线来回看）。
+ *
+ * 成语页的「会」走这里：只写本地标签而不管 SRS 的话，卡片还会继续出现在复习里，
+ * 两个地方状态会互相打脸。没建过卡片则返回 false，由调用方决定只记标签。
+ */
+export async function markWordKnown(word: string): Promise<boolean> {
+  const cards = await listFlashcards();
+  const hit = cards.find((c) => c.question === word && !c.suspended);
+  if (!hit) return false;
+  await markMastery(hit.id, 2);
+  return true;
+}

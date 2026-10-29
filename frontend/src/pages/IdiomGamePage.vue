@@ -12,6 +12,7 @@ import { useReviewStore } from "@/stores/reviewStore";
 import { loadIdioms, type IdiomEntry } from "@/services/knowledgePack";
 import { addWordToReview } from "@/services/quest/wordCards";
 import { saveGameResult, loadUntimed, saveUntimed } from "@/services/gameService";
+import { bumpMistakes } from "@/services/idiomPack";
 import {
   answerBlank,
   createIdiomGame,
@@ -134,6 +135,9 @@ async function settle() {
   saveGameResult("idiom", "idiom", g.score);
 
   // 答错的成语批量入队，复用现有 SRS
+  // 错词次数累加到成语页（那边按「错过 N 次」排序/筛选），同一局同一条只算一次
+  bumpMistakes([...new Set(g.wrongWords.map((w) => w.w))]);
+
   banked.value = 0;
   for (const item of g.wrongWords) {
     try {

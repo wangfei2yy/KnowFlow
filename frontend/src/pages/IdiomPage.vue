@@ -3,23 +3,45 @@
  * 成语学习：172 条常用四字成语，支持搜索、随机、加入复习卡片。
  * 数据来自 data/成语 PDF，由 scripts/build-life-packs.mjs 编译成 packs/idiom.json。
  */
-import { computed, onMounted, ref } from "vue";
-import { Search, X, Shuffle, Plus, CheckCircle2, Quote, Loader2 } from "lucide-vue-next";
+import { computed, onMounted, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { Search, X, Shuffle, Plus, CheckCircle2, Quote, Loader2, RotateCcw, Filter } from "lucide-vue-next";
 import { loadIdioms, type IdiomEntry } from "@/services/knowledgePack";
-import { addWordToReview } from "@/services/quest/wordCards";
+import { addWordToReview, markWordKnown } from "@/services/quest/wordCards";
+import {
+  EMPTY_FILTER,
+  LEVEL_META,
+  buildFacets,
+  filterIdioms,
+  loadLevels,
+  loadMistakes,
+  parseFilter,
+  setLevel,
+  toQuery,
+  type IdiomFilter,
+  type IdiomLevel
+} from "@/services/idiomPack";
 import { useAppStore } from "@/stores/appStore";
 import { useReviewStore } from "@/stores/reviewStore";
 
+const route = useRoute();
+const router = useRouter();
 const appStore = useAppStore();
 const reviewStore = useReviewStore();
 
 const loading = ref(true);
 const error = ref("");
 const all = ref<IdiomEntry[]>([]);
-const keyword = ref("");
 const active = ref<IdiomEntry | null>(null);
 const adding = ref(false);
 const addedSet = ref<Set<string>>(new Set());
+
+/** 筛选条件放 URL：这样「含水的四字成语」可以直接复制给别人 */
+const filter = ref<IdiomFilter>(parseFilter(route.query as Record<string, unknown>));
+const levels = ref<Record<string, IdiomLevel>>(loadLevels());
+const mistakes = ref<Record<string, number>>(loadMistakes());
+
+const facets = computed(() => buildFacets(all.value));
 
 onMounted(async () => {
   try {
@@ -31,11 +53,64 @@ onMounted(async () => {
   }
 });
 
-const filtered = computed(() => {
-  const kw = keyword.value.trim();
-  if (!kw) return all.value;
-  return all.value.filter((i) => i.w.includes(kw) || i.m.includes(kw));
+const filtered = computed(() => filterIdioms(all.value, filter.value, levels.value, mistakes.value));
+
+/** keyword 是 filter.keyword 的便捷绑定（输入框用） */
+const keyword = computed({
+  get: () => filter.value.keyword,
+  set: (v: string) => (filter.value = { ...filter.value, keyword: v })
 });
+
+watch(
+  filter,
+  (f) => router.replace({ query: toQuery(f) }),
+  { deep: true }
+);
+
+const hasFilter = computed(
+  () => JSON.stringify(toQuery(filter.value)) !== JSON.stringify(toQuery(EMPTY_FILTER))
+);
+
+function resetFilter() {
+  filter.value = { ...EMPTY_FILTER };
+}
+
+function toggleLevel(lv: IdiomLevel) {
+  filter.value = { ...filter.value, level: filter.value.level === lv ? "all" : lv };
+}
+
+/** 三档掌握度：会 → 拉长复习间隔；模糊/不会 → 进队列 */
+async function markLevel(item: IdiomEntry, lv: IdiomLevel, e?: Event) {
+  e?.stopPropagation();
+  const next = levels.value[item.w] === lv ? null : lv;
+  levels.value = setLevel(item.w, next);
+  if (!next) {
+    appStore.showToast(`已取消「${item.w}」的标记`, "info");
+    return;
+  }
+  if (next === "known") {
+    const touched = await markWordKnown(item.w);
+    appStore.showToast(
+      touched ? `「${item.w}」标为会，复习间隔拉长` : `「${item.w}」标为会（还没进过复习队列）`,
+      "success"
+    );
+    return;
+  }
+  // 模糊 / 不会：进现有的 SRS 队列，不新建机制
+  if (!addedSet.value.has(item.w)) {
+    try {
+      await addWordToReview("idiom", { w: item.w, p: "", m: item.m }, next === "unknown");
+      addedSet.value = new Set([...addedSet.value, item.w]);
+      void reviewStore.refresh();
+    } catch (err) {
+      appStore.showToast(err instanceof Error ? err.message : "加入失败", "error");
+    }
+  }
+  appStore.showToast(
+    next === "unknown" ? `「${item.w}」已加入复习（不会）` : `「${item.w}」已加入复习（模糊）`,
+    "success"
+  );
+}
 
 function open(item: IdiomEntry) {
   active.value = item;
@@ -93,6 +168,94 @@ async function addToReview(item: IdiomEntry) {
       </button>
     </div>
 
+    <!-- 筛选：首字 / 尾字 / 字数 / 掌握度 / 只看错过（全部写进 URL） -->
+    <div class="mb-4 rounded-xl border border-slate-100 bg-white p-3">
+      <div class="flex flex-wrap items-center gap-2">
+        <span class="flex items-center gap-1 text-xs text-slate-400"><Filter :size="12" /> 筛选</span>
+
+        <select
+          :value="filter.first"
+          class="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600"
+          aria-label="首字"
+          @change="filter = { ...filter, first: ($event.target as HTMLSelectElement).value }"
+        >
+          <option value="">首字不限</option>
+          <option v-for="f in facets.firsts" :key="'f' + f.ch" :value="f.ch">{{ f.ch }}（{{ f.count }}）</option>
+        </select>
+
+        <select
+          :value="filter.last"
+          class="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600"
+          aria-label="尾字"
+          @change="filter = { ...filter, last: ($event.target as HTMLSelectElement).value }"
+        >
+          <option value="">尾字不限</option>
+          <option v-for="l in facets.lasts" :key="'l' + l.ch" :value="l.ch">{{ l.ch }}（{{ l.count }}）</option>
+        </select>
+
+        <div class="flex items-center gap-1">
+          <button
+            v-for="l in facets.lengths"
+            :key="'n' + l.len"
+            class="rounded-full px-2 py-1 text-xs transition"
+            :class="filter.len === l.len ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
+            @click="filter = { ...filter, len: filter.len === l.len ? 0 : l.len }"
+          >
+            {{ l.len }} 字
+          </button>
+        </div>
+
+        <span class="mx-1 h-4 w-px bg-slate-200"></span>
+
+        <button
+          class="rounded-full px-2 py-1 text-xs transition"
+          :class="filter.level === 'known' ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-600'"
+          @click="toggleLevel('known')"
+        >
+          会
+        </button>
+        <button
+          class="rounded-full px-2 py-1 text-xs transition"
+          :class="filter.level === 'fuzzy' ? 'bg-amber-500 text-white' : 'bg-amber-50 text-amber-600'"
+          @click="toggleLevel('fuzzy')"
+        >
+          模糊
+        </button>
+        <button
+          class="rounded-full px-2 py-1 text-xs transition"
+          :class="filter.level === 'unknown' ? 'bg-rose-500 text-white' : 'bg-rose-50 text-rose-500'"
+          @click="toggleLevel('unknown')"
+        >
+          不会
+        </button>
+        <button
+          class="rounded-full px-2 py-1 text-xs transition"
+          :class="filter.level === 'none' ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-600'"
+          @click="filter = { ...filter, level: filter.level === 'none' ? 'all' : 'none' }"
+        >
+          未标
+        </button>
+        <button
+          class="rounded-full px-2 py-1 text-xs transition"
+          :class="filter.onlyMistake ? 'bg-orange-500 text-white' : 'bg-orange-50 text-orange-600'"
+          @click="filter = { ...filter, onlyMistake: !filter.onlyMistake }"
+        >
+          只看错过
+        </button>
+
+        <button
+          v-if="hasFilter"
+          class="ml-auto flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-slate-500 hover:bg-slate-100"
+          @click="resetFilter"
+        >
+          <RotateCcw :size="12" /> 清空筛选
+        </button>
+      </div>
+      <p class="mt-2 text-[11px] text-slate-400">
+        命中 {{ filtered.length }} 条 · 筛选条件已写进地址栏，可直接复制分享
+      </p>
+    </div>
+
     <div v-if="loading" class="card flex items-center gap-2 p-6 text-sm text-slate-500">
       <Loader2 :size="16" class="animate-spin" /> 正在加载成语…
     </div>
@@ -108,6 +271,20 @@ async function addToReview(item: IdiomEntry) {
       >
         <div class="flex w-full items-center gap-2">
           <span class="text-base font-semibold tracking-wide text-slate-900">{{ item.w }}</span>
+          <span
+            v-if="levels[item.w]"
+            class="rounded px-1 py-0.5 text-[10px]"
+            :class="LEVEL_META[levels[item.w]].cls"
+          >
+            {{ LEVEL_META[levels[item.w]].label }}
+          </span>
+          <span
+            v-if="mistakes[item.w]"
+            class="rounded bg-orange-50 px-1 py-0.5 text-[10px] text-orange-500"
+            :title="`在趣味学习里错过 ${mistakes[item.w]} 次`"
+          >
+            错 {{ mistakes[item.w] }}
+          </span>
           <CheckCircle2
             v-if="addedSet.has(item.w)"
             :size="13"
@@ -116,6 +293,23 @@ async function addToReview(item: IdiomEntry) {
           />
         </div>
         <p class="line-clamp-2 text-xs leading-relaxed text-slate-500">{{ item.m }}</p>
+
+        <!-- 三档标记：不打开详情也能快速过一遍 -->
+        <div class="mt-1 flex w-full gap-1">
+          <button
+            v-for="lv in (['known', 'fuzzy', 'unknown'] as const)"
+            :key="lv"
+            class="flex-1 rounded px-1 py-0.5 text-[11px] transition"
+            :class="
+              levels[item.w] === lv
+                ? LEVEL_META[lv].cls + ' font-medium'
+                : 'bg-slate-50 text-slate-400 hover:bg-slate-100'
+            "
+            @click="markLevel(item, lv, $event)"
+          >
+            {{ LEVEL_META[lv].label }}
+          </button>
+        </div>
       </button>
       <p v-if="filtered.length === 0" class="col-span-full py-10 text-center text-sm text-slate-400">
         没有匹配的成语，换个关键词试试
@@ -149,6 +343,22 @@ async function addToReview(item: IdiomEntry) {
             <Quote :size="12" /> 出处
           </div>
           <p class="text-xs leading-relaxed text-slate-600">{{ active.from }}</p>
+        </div>
+
+        <div class="mt-4 flex items-center gap-2">
+          <span class="text-xs text-slate-400">掌握度</span>
+          <button
+            v-for="lv in (['known', 'fuzzy', 'unknown'] as const)"
+            :key="'d' + lv"
+            class="rounded-full px-2.5 py-1 text-xs transition"
+            :class="levels[active.w] === lv ? LEVEL_META[lv].cls + ' font-medium' : 'bg-slate-100 text-slate-500'"
+            @click="markLevel(active, lv)"
+          >
+            {{ LEVEL_META[lv].label }}
+          </button>
+          <span v-if="mistakes[active.w]" class="ml-auto text-xs text-orange-500">
+            在趣味学习里错过 {{ mistakes[active.w] }} 次
+          </span>
         </div>
 
         <div class="mt-5 flex gap-2">
