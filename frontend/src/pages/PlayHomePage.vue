@@ -25,6 +25,10 @@ import {
   Languages,
   Shuffle,
   Footprints,
+  Worm,
+  Plane,
+  BrickWall,
+  Route,
   Trophy,
   ChevronRight,
   Lock
@@ -82,6 +86,35 @@ const games: GameCard[] = [
     icon: Footprints,
     path: "/study/play/runner",
     accent: "bg-violet-50 text-violet-600"
+  },
+  // ---- 以下为待开发玩法：先摆出来让人看到方向，规则已定稿 ----
+  {
+    id: "snake",
+    title: "单词贪吃蛇",
+    desc: "吃对变长变快，空间越来越挤 —— 难度跟着你涨",
+    icon: Worm,
+    accent: "bg-lime-50 text-lime-600"
+  },
+  {
+    id: "shooter",
+    title: "单词弹幕",
+    desc: "只打写着正确单词的那架飞机，打错扣血",
+    icon: Plane,
+    accent: "bg-cyan-50 text-cyan-600"
+  },
+  {
+    id: "brick",
+    title: "单词打砖块",
+    desc: "球撞到砖块时二选一，选对才消得掉",
+    icon: BrickWall,
+    accent: "bg-orange-50 text-orange-600"
+  },
+  {
+    id: "maze",
+    title: "单词迷宫",
+    desc: "岔路口只有一条门的词是对的，走错退三步",
+    icon: Route,
+    accent: "bg-indigo-50 text-indigo-600"
   }
 ];
 
@@ -139,7 +172,7 @@ function scoreText(g: GameCard): string {
     const s = gameScoreOf(gameProgress.value, "runner", packId.value);
     return s.plays > 0 ? `最高 ${s.bestScore} 分 · ${s.plays} 局` : "还没玩过";
   }
-  return "即将上线";
+  return "规则已定稿，等排期";
 }
 
 function enter(g: GameCard) {
@@ -204,7 +237,7 @@ function actionLabel(g: GameCard): string {
                 v-if="!g.path"
                 class="flex items-center gap-0.5 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-400"
               >
-                <Lock :size="9" /> 即将上线
+                <Lock :size="9" /> 待开发
               </span>
             </div>
             <p class="mt-0.5 text-xs leading-relaxed text-slate-500">{{ g.desc }}</p>
