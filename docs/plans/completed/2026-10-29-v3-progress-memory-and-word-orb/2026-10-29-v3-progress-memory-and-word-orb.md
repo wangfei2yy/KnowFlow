@@ -1,20 +1,23 @@
-# v3 · 学习进度记忆 + 单词球球游戏
+# 知间 AI（KnowFlow）· v3 迭代：学习进度记忆 + 单词球球
 
-> 制定日期：2026-10-29
-> 状态：**待开发**
-> 关联决策：先做球球吞噬；答错入队、答对只记成绩；「闯关」升级成「游戏」
-> 前置文档：[03 学习模式](../../../功能模块/03_任务管理与学习模式.md)、[06 内置知识包](../../../功能模块/06_内置知识包与单词闯关.md)
+- 日期：2026-10-29
+- 状态：已完成
+- 完成时间：2026-10-29
+- 代码基线：`main`，前端 `frontend/`（dev 5195 / preview 4195），后端 8022
+- 涉及范围：闯关会话持久化、复习位置记忆、游戏中心与路由改造、单词球球（引擎/渲染/输入/页面）
+- 最终验收：type-check、`test:orb`、`test:progress`、既有 7 个冒烟脚本、双端构建全部通过；端内产物 `fetch = 0`、无 Orb 代码、`packs/` 与 `sw.js` 已清理
+- 关联文档：[模块 03 · 学习模式](../../../功能模块/03_任务管理与学习模式.md)、[模块 06 · 内置知识包与单词闯关](../../../功能模块/06_内置知识包与单词闯关.md)、[模块 08 · 学习小游戏](../../../功能模块/08_学习小游戏.md)
 
 ---
 
-## 01 背景
+## 一、背景
 
 两个问题：
 
 1. **进度不记忆**。单词闯关 `startSession()` 每次新建会话，`questions / index / lives / score` 全在内存，退出即丢；`localStorage` 只存了 `bestScore / plays / lastPlayedAt`。用户背到第 3 题退出，重进回到第 1 题。卡片复习的 `currentIndex` 同样是内存 ref，切页归零。
 2. **学习形式单一**。现有学习只有「翻卡 + 四选一」两种形态，缺少即时反馈类玩法。用户希望做一个"边玩边学"的小游戏，第一优先是球球吞噬（吃对变大、吃错变小、环境随球变大而升级）。
 
-## 02 目标与非目标
+## 二、目标与非目标
 
 **目标**
 
@@ -30,7 +33,7 @@
 - 不做成语接龙、配对消除（本期只预留入口位，标「即将上线」）
 - 端内（小工具）不提供任何游戏，依赖词库在线加载
 
-## 03 阶段 0：进度记忆（0.5 天）
+## 三、阶段 0：进度记忆
 
 ### 3.1 闯关会话持久化
 
@@ -79,7 +82,7 @@ interface SavedPosition {
 
 **不持久化**：视图模式（复习/列表）、筛选条件 —— 这些属于"临时选择"，记住反而困惑。
 
-## 04 阶段 1：游戏中心改造（0.5 天）
+## 四、阶段 1：游戏中心改造
 
 ### 4.1 路由调整
 
@@ -105,7 +108,7 @@ interface SavedPosition {
 
 **成绩存储**：`knowflow.game.progress`，结构 `{ [gameId]: { [packId]: { bestScore, plays, lastPlayedAt } } }`。与现有 `knowflow.quest.progress` 分开，避免球球和闯关的分数混在一起。
 
-## 05 阶段 2：单词球球（核心，3 天）
+## 五、阶段 2：单词球球
 
 ### 5.1 玩法定义
 
@@ -187,7 +190,7 @@ addWordToReview(packId, word, /* wrong */ true)
 - 答对**不动 SRS**，只 `saveGameResult` 记成绩
 - 结算页显示「已加入 N 个词到复习队列」，给用户明确预期
 
-## 06 数据与接口
+## 六、数据与接口
 
 ### 6.1 新增文件
 
@@ -249,7 +252,7 @@ export function loadGameProgress(): GameProgress;
 export function saveGameResult(gameId: string, packId: string, score: number): GameProgress;
 ```
 
-## 07 文件改动清单
+## 七、文件改动清单
 
 | 文件 | 类型 | 说明 |
 | --- | --- | --- |
@@ -268,7 +271,7 @@ export function saveGameResult(gameId: string, packId: string, score: number): G
 | `package.json` | 改 | `test:orb` |
 | `docs/功能模块/08_学习小游戏.md` | 新增 | 玩法与数值说明 |
 
-## 08 验收用例
+## 八、验收用例
 
 **进度记忆**
 
@@ -295,7 +298,7 @@ export function saveGameResult(gameId: string, packId: string, score: number): G
 | 14 | 结算 | 答错的词已进复习队列，数量与列表一致 |
 | 15 | 刷新页面中途退出 | 球球不恢复进度（一局制），但成绩已按局记 |
 
-## 09 排期（自然日，含周末）
+## 九、排期（当时估算）
 
 | 日期 | 阶段 | 交付 |
 | --- | --- | --- |
@@ -309,7 +312,7 @@ export function saveGameResult(gameId: string, packId: string, score: number): G
 
 **合计 7 个自然日**，其中纯编码 6 天。
 
-## 10 风险与对策
+## 十、风险与对策
 
 | 风险 | 影响 | 对策 |
 | --- | --- | --- |
@@ -320,7 +323,7 @@ export function saveGameResult(gameId: string, packId: string, score: number): G
 | 一局写 20 次 IndexedDB 卡顿 | 结算卡 | 结算时批量入队（`bulkPut` / 循环但只一次事务） |
 | 存档在多设备/多标签冲突 | 状态错乱 | 只做单标签使用；存档带 `savedAt`，7 天过期 |
 
-## 11 测试计划
+## 十一、测试计划
 
 **单测（`npm run test:orb`，纯引擎，不碰 DOM）**
 
@@ -346,10 +349,97 @@ build / build:minitool（fetch = 0、无 Orb chunk、packs 已清理）
 zip 审计 PASS（12 文件，约 1.23 MB）
 ```
 
-## 12 后续（本期不做，留位）
+## 十二、后续（本期不做，留位）
 
 1. 成语接龙：172 条成语可预生成接龙图，零美术，1.5 天
 2. 中英配对消除：4×4 网格，限时，1.5 天
 3. 音效与背景音乐（需音频资源，端内不可用）
 4. 每日挑战：固定种子 + 全服同一套题，做完可分享成绩卡
 5. 小知参与：连击高时小知弹出来鼓励（复用好感度）
+
+---
+
+## 十三、实施结果
+
+### 13.1 交付物
+
+| # | 交付 | 位置 |
+| --- | --- | --- |
+| 1 | 存档服务（三个存储域 + 队列指纹） | `src/services/gameService.ts` |
+| 2 | 闯关「继续」与按词库存档 | `src/pages/QuestPage.vue` |
+| 3 | 复习位置记忆（指纹校验） | `src/pages/StudyPage.vue` |
+| 4 | 游戏中心 | `src/pages/PlayHomePage.vue` |
+| 5 | 球球引擎 / 渲染 / 输入 | `src/games/orb/{engine,render,input}.ts` |
+| 6 | 球球页面 | `src/pages/OrbPage.vue` |
+| 7 | 路由与导航改造 | `src/router/index.ts`、`StudyTabs.vue`、`AppSidebar.vue` |
+| 8 | 单测 | `scripts/smoke-orb.ts`、`smoke-orb-render.ts`、`smoke-progress.ts` + 对应 runner |
+| 9 | 模块文档 | `docs/功能模块/08_学习小游戏.md` |
+
+### 13.2 门禁结果
+
+```
+type-check            ✅
+test:orb              ✅ 引擎 12 组 + 渲染 66 帧冒烟
+test:progress         ✅ 存档 10 组
+test:quest / cards / srs / packs / markdown / render / voice  ✅
+build                 ✅ PlayHomePage 4.51 kB / OrbPage 21.30 kB（gzip 9.60 kB）+ 0.18 kB CSS，均独立 chunk
+build:minitool        ✅ 1690 模块 → app.js 314.05 kB
+  端内约束            fetch = 0 · 无 orb 代码 · getUserMedia = 0 · packs/ 与 sw.js 已清
+```
+
+### 13.3 与验收用例的对应
+
+| # | 用例 | 实现方式 |
+| --- | --- | --- |
+| 1 | 答到第 3 题退出再进显示「继续 · 第 3/10 题」 | 每次作答/切题写 `knowflow.quest.session`，大厅按 `packId` 读取 |
+| 2 | 继续后刷新，生命与得分保持 | 存整份 `QuestSession`（含 lives/score/questions） |
+| 3 | 一局结束回到「开始闯关」 | `finished` 即清掉该词库存档 |
+| 4 | 切到 cet6 时 cet4 存档保留 | 存档改为 `{ [packId]: SavedQuest }` |
+| 5 | 复习到第 5 张切走再回仍在第 5 张 | `knowflow.study.position` + 队列指纹 |
+| 6 | 队列变化时回到第 1 张 | 指纹不一致即丢弃，并夹住越界索引 |
+| 7–12 | 吃对/吃错/三条命/60 秒/层级/半径下限 | `engine.ts`，单测覆盖数值与边界 |
+| 13 | 摇杆拖动 | Pointer Events 相对拖动，死区 8px / 行程 48px |
+| 14 | 结算错词已入队且数量一致 | `settle()` 逐条 `addWordToReview`，`banked` 计数同源 |
+| 15 | 球球不恢复进度、成绩按局记 | 一局制，仅 `saveGameResult("orb", packId, score)` |
+
+> 7–15 中的「手机摇杆手感、层级视觉过渡」属于主观项，需要人工在真机过一遍（见 11 节浏览器实测）。
+
+### 13.4 端到端验证（一次性）
+
+用 vite 打一份 IIFE 版网页产物，在 jsdom（补 `fake-indexeddb` 与假 canvas context）里真实跑了一遍：
+
+```
+1) 首页渲染                          OK
+2) 游戏中心四张卡 + 词库选择 + 成绩   OK
+3) 从游戏中心进闯关 → 直接第 1 题      OK
+4) 答一题 → localStorage 写入存档      OK（index=1）
+5) 退出 → 卡片变成「继续 · 第 2/10 题」 OK
+6) 点继续 → 回到第 2 题                OK
+7) 进球球 → 准备页                    OK
+8) 开一局 → HUD 倒计时 / 分数 / 目标词 OK
+9) canvas 挂载                        OK
+runtime errors: none
+```
+
+这套脚本依赖 `fake-indexeddb` 与专用构建配置，未纳入常规门禁（避免为一次验证增加依赖），
+已删除；回归仍以 `test:orb` / `test:progress` 为准。
+
+## 十四、实现偏差说明
+
+| 项 | 计划 | 实际 | 原因 |
+| --- | --- | --- | --- |
+| 闯关存档键 | 单条 `SavedQuest` | `{ [packId]: SavedQuest }`，带旧结构兼容 | 单条会被「切词库」冲掉，与验收用例 4 冲突 |
+| 单测范围 | 只有引擎 | 引擎 + 渲染（假 context）+ 存档三套 | 渲染层踩过 `state.label` 缺字段的坑；存档逻辑纯字符串，测起来几乎零成本 |
+| 渲染坐标 | 世界坐标 + `ctx.scale` | 全部屏幕坐标手算 | 相机缩到 0.35 时文字会一起缩成 6px，单词不可读 |
+| 食物球半径 | 固定 19 世界单位 | 世界半径 19，但屏幕半径设 13px 下限 | 同上：纯按 scale 会失去可读性；略大于碰撞半径，手感更宽容 |
+| 环境装饰 | 每个层级一组固定坐标 | 世界网格 + 哈希即时生成 | 玩家会一直移动，固定坐标迟早「走出装饰区」 |
+| 干扰项 | 形近词 + 同类词 | 只做形近（首字母/长度/公共前缀打分） | 词条数据没有词性字段，做不了「同类词」；形近一项已能防「看长度猜」 |
+| 错误词记录 | 记录被吃错的球 | 记录**没认出来的目标词** | 玩家是看到中文没找到英文；记住目标词才是真正该补的 |
+| PlayHomePage 选词库 | 每张卡各自选 | 页面上统一选一次，随 `?pack=` 带进游戏 | 减少一次点击，也让「换词库」有唯一入口 |
+
+## 十五、遗留
+
+- 球球目前无音效；震动反馈也只在视觉层（屏幕抖动），未调用 `navigator.vibrate`
+- 手机摇杆手感、深色电子风背景（地球/太阳系）需真机确认
+- 成语接龙、中英配对仍是「即将上线」占位
+- 游戏成绩只在本机，未做跨设备同步（与整体账号体系一致）

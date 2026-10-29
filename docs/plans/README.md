@@ -11,7 +11,7 @@
 
 | 日期 | 计划 | 文件 |
 | --- | --- | --- |
-| 2026-10-29 | 学习进度记忆 + 单词球球游戏（v3） | [2026-10-29-v3-progress-memory-and-word-orb.md](active/2026-10-29-v3-progress-memory-and-word-orb/2026-10-29-v3-progress-memory-and-word-orb.md) |
+| — | 暂无 | — |
 
 ## 已完成
 
@@ -22,6 +22,7 @@
 | 2026-10-28 | 模块三：增强模块（AI Provider 与四类 AI 能力） | [2026-10-28-module-3-ai-enhancement.md](completed/2026-10-28-module-3-ai-enhancement/2026-10-28-module-3-ai-enhancement.md) |
 | 2026-10-28 | 模块四：最终模块（导入、备份、后端代理、部署） | [2026-10-28-module-4-final-delivery.md](completed/2026-10-28-module-4-final-delivery/2026-10-28-module-4-final-delivery.md) |
 | 2026-10-28 | v2 迭代：学习闭环与体验优化（完成于 2026-10-29） | [2026-10-28-v2-learning-loop-and-ux.md](completed/2026-10-28-v2-learning-loop-and-ux/2026-10-28-v2-learning-loop-and-ux.md) |
+| 2026-10-29 | v3 迭代：学习进度记忆 + 单词球球（完成于 2026-10-29） | [2026-10-29-v3-progress-memory-and-word-orb.md](completed/2026-10-29-v3-progress-memory-and-word-orb/2026-10-29-v3-progress-memory-and-word-orb.md) |
 
 ## 不在本目录的文档
 

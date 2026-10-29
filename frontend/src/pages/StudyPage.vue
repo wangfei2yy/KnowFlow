@@ -17,6 +17,12 @@ import {
 } from "@/services/flashcardService";
 import { useReviewStore } from "@/stores/reviewStore";
 import {
+  loadStudyPosition,
+  saveStudyPosition,
+  clearStudyPosition,
+  fingerprintOf
+} from "@/services/gameService";
+import {
   ArrowLeft,
   ArrowRight,
   Trash2,
@@ -125,6 +131,29 @@ const currentMeta = computed(() =>
     : null
 );
 
+/** 当前复习批次的指纹：队列内容一变就换，用来判断上次的位置还算不算数 */
+const queueFingerprint = computed(() => fingerprintOf(reviewCards.value.map((c) => c.id)));
+
+/**
+ * 恢复上次停下的位置。
+ * 只认「队列指纹一致」的存档：标记掌握后队列会缩短，
+ * 死守旧 index 会指到别的卡上，不如回到第 1 张。
+ */
+function restorePosition() {
+  currentIndex.value = 0;
+  flipped.value = false;
+  if (!queueMode.value) return;
+  const pos = loadStudyPosition();
+  if (!pos) return;
+  if (pos.fingerprint !== queueFingerprint.value) {
+    clearStudyPosition();
+    return;
+  }
+  if (pos.index > 0 && pos.index < reviewCards.value.length) {
+    currentIndex.value = pos.index;
+  }
+}
+
 // 分类分组（列表视图用）
 const groupedByCategory = computed(() => {
   const groups = new Map<string, CardWithMeta[]>();
@@ -140,6 +169,7 @@ onMounted(async () => {
   // 先加载资料与分类，再加载卡片，确保卡片能正确关联分类
   await docStore.loadAll();
   await loadCards();
+  restorePosition();
 
   // 从全局搜索跳转：?card=<id> 直接定位到该卡片（退出队列模式以便在全部卡片中查找）
   const targetId = route.query.card as string | undefined;
@@ -182,6 +212,17 @@ async function loadCards() {
 watch([filterCategoryId, filterMastery, sortBy], () => {
   currentIndex.value = 0;
   flipped.value = false;
+});
+
+/**
+ * 记住复习位置。切到概览、切 Tab、刷新再回来都能接上。
+ * 只记「队列模式」下的位置：列表视图和临时筛选不属于要记住的东西。
+ */
+watch([currentIndex, queueFingerprint], () => {
+  if (viewMode.value !== "review") return;
+  if (!queueMode.value) return;
+  if (!reviewCards.value.length) return;
+  saveStudyPosition(queueFingerprint.value, currentIndex.value);
 });
 
 function sourceTitle(card: Flashcard): string | undefined {

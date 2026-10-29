@@ -63,13 +63,13 @@ const navItems: NavItem[] = [
     badge: "review",
     children: [
       { path: "/study/cards", label: "卡片复习" },
-      // 端内无网络，知识包加载不了，这两个子项只在网页版出现
+      // 端内无网络，知识包加载不了，这几个子项只在网页版出现
       ...(IS_MINITOOL
         ? []
         : [
             { path: "/study/grammar", label: "语法学习" },
             { path: "/study/idiom", label: "成语学习" },
-            { path: "/study/quest", label: "单词闯关" }
+            { path: "/study/play", label: "游戏中心" }
           ])
     ]
   },

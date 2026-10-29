@@ -43,11 +43,24 @@ const routes = [
               component: () => import("@/pages/IdiomPage.vue"),
               meta: { title: "成语学习" }
             },
+            // 游戏中心 → 具体玩法。球球是全屏 Canvas，单独一个页面，不塞进游戏中心
             {
-              path: "quest",
-              name: "study-quest",
+              path: "play",
+              name: "study-play",
+              component: () => import("@/pages/PlayHomePage.vue"),
+              meta: { title: "游戏中心" }
+            },
+            {
+              path: "play/quest",
+              name: "study-play-quest",
               component: () => import("@/pages/QuestPage.vue"),
               meta: { title: "单词闯关" }
+            },
+            {
+              path: "play/orb",
+              name: "study-play-orb",
+              component: () => import("@/pages/OrbPage.vue"),
+              meta: { title: "单词球球" }
             }
           ])
     ]
@@ -86,8 +99,8 @@ const routes = [
 ];
 
 /**
- * 旧链接兼容：这两个路径在上一版是顶层页面，已发布出去，不能直接失效。
- * 用 redirect 保留 query（例如 /grammar?topic=xxx）。
+ * 旧链接兼容：这几个路径在上一版是顶层页面 / 顶层子路由，已发布出去，不能直接失效。
+ * 用 redirect 保留 query（例如 /grammar?topic=xxx、/study/play/quest?pack=cet6）。
  */
 const legacyRoutes = IS_MINITOOL
   ? []
@@ -99,7 +112,8 @@ const legacyRoutes = IS_MINITOOL
           query: to.query
         })
       },
-      { path: "/quest", redirect: "/study/quest" }
+      { path: "/quest", redirect: "/study/play/quest" },
+      { path: "/study/quest", redirect: "/study/play/quest" }
     ];
 
 /**
