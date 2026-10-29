@@ -4,12 +4,14 @@ import { useRoute } from "vue-router";
 import { useDocumentStore } from "@/stores/documentStore";
 import { useAppStore } from "@/stores/appStore";
 import { useReviewStore } from "@/stores/reviewStore";
+import { IS_MINITOOL } from "@/utils/runtime";
 import {
   Home,
   Library,
   Sparkles,
   CheckSquare,
   GraduationCap,
+  Gamepad2,
   Upload,
   Settings,
   X,
@@ -37,6 +39,8 @@ const navItems = [
   { path: "/assistant", label: "AI 工作台", icon: Sparkles },
   { path: "/tasks", label: "任务清单", icon: CheckSquare },
   { path: "/study", label: "学习中心", icon: GraduationCap },
+  // 端内无网络，词库加载不了，入口只在网页版出现
+  ...(IS_MINITOOL ? [] : [{ path: "/quest", label: "单词闯关", icon: Gamepad2 }]),
   { path: "/import", label: "文件导入", icon: Upload },
   { path: "/settings", label: "设置", icon: Settings }
 ];

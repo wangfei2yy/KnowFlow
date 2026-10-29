@@ -62,6 +62,10 @@ export default defineConfig({
             "@/services/pdfWorkerUrl": fileURLToPath(
               new URL("./src/minitool/pdfWorkerUrl.stub.ts", import.meta.url)
             ),
+            // 内置知识包需要联网拉取 → 换成空实现/抛错替身
+            "@/services/knowledgePack": fileURLToPath(
+              new URL("./src/minitool/knowledgePack.stub.ts", import.meta.url)
+            ),
             // 语音转写需要上传音频，容器禁止联网 → 换成抛错替身
             "@/services/speech/transcribe": fileURLToPath(
               new URL("./src/minitool/transcribe.stub.ts", import.meta.url)

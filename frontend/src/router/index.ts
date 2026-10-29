@@ -1,4 +1,5 @@
 import { createRouter, createWebHashHistory } from "vue-router";
+import { IS_MINITOOL } from "@/utils/runtime";
 
 const routes = [
   { path: "/", name: "home", component: () => import("@/pages/HomePage.vue"), meta: { title: "首页" } },
@@ -13,10 +14,22 @@ const routes = [
   { path: "/settings", name: "settings", component: () => import("@/pages/SettingsPage.vue"), meta: { title: "设置" } }
 ];
 
+// 单词闯关依赖在线词库，端内不注册该路由（也就不会把它打进产物）
+const extraRoutes = IS_MINITOOL
+  ? []
+  : [
+      {
+        path: "/quest",
+        name: "quest",
+        component: () => import("@/pages/QuestPage.vue"),
+        meta: { title: "单词闯关" }
+      }
+    ];
+
 export const router = createRouter({
   // 使用 hash 路由，静态托管刷新不 404，便于发布到任意子路径
   history: createWebHashHistory(),
-  routes
+  routes: [...routes, ...extraRoutes]
 });
 
 /**

@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "generatedAt": "2026-10-29T04:39:38.957Z",
+  "packs": [
+    {
+      "id": "cet4",
+      "kind": "words",
+      "title": "四级词汇",
+      "count": 4424,
+      "bytes": 522050,
+      "file": "cet4.json"
+    },
+    {
+      "id": "cet6",
+      "kind": "words",
+      "title": "六级词汇",
+      "count": 5518,
+      "bytes": 643115,
+      "file": "cet6.json"
+    },
+    {
+      "id": "grammar",
+      "kind": "docs",
+      "title": "英语语法专题",
+      "count": 50,
+      "bytes": 351819,
+      "file": "grammar.json"
+    }
+  ]
+}

@@ -3,8 +3,10 @@ import { ref, onMounted } from "vue";
 import { useDocumentStore } from "@/stores/documentStore";
 import { useAppStore } from "@/stores/appStore";
 import { parseFile, importItem, type ImportItem } from "@/services/importService";
+import { createDocument } from "@/services/documentService";
+import { loadGrammar, loadPackIndex, type PackMeta } from "@/services/knowledgePack";
 import { IS_MINITOOL } from "@/utils/runtime";
-import { Upload, FileText, Trash2, CheckCircle2, AlertCircle, Plus, X, FolderPlus } from "lucide-vue-next";
+import { Upload, FileText, Trash2, CheckCircle2, AlertCircle, Plus, X, FolderPlus, Package, Loader2 } from "lucide-vue-next";
 
 const docStore = useDocumentStore();
 const appStore = useAppStore();
@@ -17,6 +19,66 @@ const pendingItems = ref<ImportItem[]>([]);
 const results = ref<{ fileName: string; ok: boolean; error?: string }[]>([]);
 
 const dragging = ref(false);
+
+/* ------------------------- 内置知识包 ------------------------- */
+const builtinPacks = ref<PackMeta[]>([]);
+const importingBuiltin = ref(false);
+const builtinProgress = ref("");
+
+onMounted(async () => {
+  try {
+    const index = await loadPackIndex();
+    builtinPacks.value = index.packs.filter((p) => p.kind === "docs");
+  } catch (e) {
+    console.warn("[KnowFlow] 内置包索引加载失败：", e);
+  }
+});
+
+/** 一键导入英语语法专题（按标题去重，分类按专题文件夹创建） */
+async function importGrammarPack() {
+  importingBuiltin.value = true;
+  builtinProgress.value = "";
+  try {
+    const topics = await loadGrammar();
+    const existingTitles = new Set(docStore.documents.map((d) => d.title));
+    const catCache = new Map<string, string>();
+    let imported = 0;
+    let skipped = 0;
+
+    for (const topic of topics) {
+      if (existingTitles.has(topic.title)) {
+        skipped += 1;
+        continue;
+      }
+      let catId = catCache.get(topic.category);
+      if (!catId) {
+        const found = docStore.categories.find((c) => c.name === topic.category);
+        catId = found ? found.id : (await docStore.addCategory(topic.category)).id;
+        catCache.set(topic.category, catId);
+      }
+      await createDocument({
+        title: topic.title,
+        content: topic.content,
+        sourceType: "note",
+        categoryId: catId,
+        tags: ["英语语法"]
+      });
+      imported += 1;
+      builtinProgress.value = `${imported} / ${topics.length}`;
+    }
+
+    await docStore.loadAll(false);
+    appStore.showToast(
+      `已导入 ${imported} 篇语法${skipped ? `，跳过 ${skipped} 篇已存在` : ""}`,
+      "success"
+    );
+  } catch (e) {
+    appStore.showToast(e instanceof Error ? e.message : "内置包导入失败", "error");
+  } finally {
+    importingBuiltin.value = false;
+    builtinProgress.value = "";
+  }
+}
 
 const categoryId = ref("");
 const tags = ref<string[]>([]);
@@ -122,6 +184,36 @@ async function confirmImport() {
     <div class="mb-5">
       <h1 class="text-2xl font-bold text-slate-900">文件导入</h1>
       <p class="mt-1 text-sm text-slate-500">支持 TXT、Markdown 和可提取文本的 PDF，单文件不超过 10 MB。</p>
+    </div>
+
+    <!-- 内置知识包 -->
+    <div v-if="!IS_MINITOOL && builtinPacks.length > 0" class="card mb-5 p-5">
+      <div class="mb-2 flex items-center gap-2">
+        <Package :size="18" class="text-brand-600" />
+        <h2 class="font-semibold text-slate-800">内置知识包</h2>
+      </div>
+      <p class="mb-3 text-sm text-slate-500">
+        不用准备资料，直接导入整理好的英语语法专题，导入后可让 AI 提炼重点、生成卡片。
+      </p>
+      <div class="space-y-2">
+        <div
+          v-for="p in builtinPacks"
+          :key="p.id"
+          class="flex flex-wrap items-center gap-3 rounded-xl border border-slate-100 px-3 py-2.5"
+        >
+          <div class="min-w-0 flex-1">
+            <div class="text-sm font-medium text-slate-800">{{ p.title }}</div>
+            <div class="text-xs text-slate-400">{{ p.count }} 篇 · 按语法点分类归档</div>
+          </div>
+          <span v-if="importingBuiltin && builtinProgress" class="text-xs text-brand-600">
+            已导入 {{ builtinProgress }}
+          </span>
+          <button class="btn-primary" :disabled="importingBuiltin" @click="importGrammarPack">
+            <Loader2 v-if="importingBuiltin" :size="14" class="animate-spin" />
+            {{ importingBuiltin ? "导入中…" : "一键导入" }}
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- 小工具容器不支持文件选择（仅能选图片/视频）与 PDF 解析 -->

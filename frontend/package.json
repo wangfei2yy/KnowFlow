@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite --config vite.config.ts",
     "build": "vue-tsc -b && vite build --config vite.config.ts",
-    "build:minitool": "vue-tsc -b && vite build --config vite.config.ts",
+    "build:minitool": "vue-tsc -b && vite build --config vite.config.ts && node scripts/clean-minitool.mjs",
     "preview": "vite preview --config vite.config.ts",
     "type-check": "vue-tsc --noEmit",
     "test:render": "node scripts/smoke-render.mjs",
@@ -15,7 +15,9 @@
     "test:provider": "node scripts/run-provider.mjs",
     "test:srs": "node scripts/run-srs.mjs",
     "test:export": "node scripts/run-export.mjs",
-    "test:search": "node scripts/run-search.mjs"
+    "test:search": "node scripts/run-search.mjs",
+    "test:quest": "node scripts/run-quest.mjs",
+    "build:packs": "node scripts/build-packs.mjs"
   },
   "dependencies": {
     "dexie": "^4.0.8",

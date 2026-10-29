@@ -35,6 +35,9 @@ yarn-error.log*
 .DS_Store
 Thumbs.db
 
+# 原始素材（含版权 PDF，本地保存；编译产物在 frontend/public/packs）
+data/
+
 # 智能体工作区数据与发布标记（本地数据，不入库）
 .workbuddy/
 .wbapp_*.genie
