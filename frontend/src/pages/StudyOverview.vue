@@ -27,8 +27,9 @@ const docStore = useDocumentStore();
 
 const cards = ref<Flashcard[]>([]);
 const grammarTotal = ref(0);
-const cet4Total = ref(0);
-const cet6Total = ref(0);
+/** 词库总数与总词量（初中/四级/六级…以后再加词库不用改这里） */
+const wordPackCount = ref(0);
+const wordTotal = ref(0);
 const loading = ref(true);
 
 onMounted(async () => {
@@ -39,8 +40,9 @@ onMounted(async () => {
     try {
       const index = await loadPackIndex();
       grammarTotal.value = index.packs.find((p) => p.id === "grammar")?.count ?? 0;
-      cet4Total.value = index.packs.find((p) => p.id === "cet4")?.count ?? 0;
-      cet6Total.value = index.packs.find((p) => p.id === "cet6")?.count ?? 0;
+      const packs = index.packs.filter((p) => p.kind === "words" && p.id !== "idiom");
+      wordPackCount.value = packs.length;
+      wordTotal.value = packs.reduce((n, p) => n + p.count, 0);
     } catch {
       // 知识包加载失败不影响概览其余部分
     }
@@ -228,7 +230,7 @@ const forecastMax = computed(() => Math.max(1, ...forecast.value.map((d) => d.co
           <span class="font-medium text-slate-800">单词学习</span>
         </div>
         <p class="text-xs text-slate-500">
-          四级 {{ cet4Total }} · 六级 {{ cet6Total }} 词，可逐词加入复习
+          {{ wordPackCount }} 个词库 · 共 {{ wordTotal }} 词，可逐词加入复习
         </p>
       </button>
     </div>

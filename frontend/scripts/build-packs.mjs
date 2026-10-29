@@ -8,6 +8,7 @@
  *
  * 输出：
  *   frontend/public/packs/index.json      包清单
+ *   frontend/public/packs/junior.json     初中词库（中考核心）
  *   frontend/public/packs/cet4.json       四级词库
  *   frontend/public/packs/cet6.json       六级词库
  *   frontend/public/packs/grammar.json    语法专题
@@ -180,7 +181,9 @@ async function main() {
 
   const packs = [];
 
+  // 顺序即前端词库列表的顺序：初中 → 四级 → 六级，按难度递进
   for (const [id, file, title] of [
+    ["junior", "初中词汇-中考核心.json", "初中词汇"],
     ["cet4", "大学英语四级词汇-乱序版-答案.pdf", "四级词汇"],
     ["cet6", "大学英语六级词汇-乱序版-答案.pdf", "六级词汇"]
   ]) {

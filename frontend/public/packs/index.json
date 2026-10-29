@@ -1,7 +1,15 @@
 {
   "version": 1,
-  "generatedAt": "2026-10-29T14:04:51.149Z",
+  "generatedAt": "2026-10-29T15:04:08.787Z",
   "packs": [
+    {
+      "id": "junior",
+      "kind": "words",
+      "title": "初中词汇",
+      "count": 2135,
+      "bytes": 236361,
+      "file": "junior.json"
+    },
     {
       "id": "cet4",
       "kind": "words",

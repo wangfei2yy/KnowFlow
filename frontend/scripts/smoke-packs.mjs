@@ -14,8 +14,30 @@ const ok = (c, m) => {
 const index = read("index.json");
 const ids = index.packs.map((p) => p.id);
 console.log("包清单:", index.packs.map((p) => `${p.id}(${p.count})`).join(" "));
-for (const need of ["cet4", "cet6", "grammar", "idiom", "recipes", "seasons"]) {
+for (const need of ["junior", "cet4", "cet6", "grammar", "idiom", "recipes", "seasons"]) {
   ok(ids.includes(need), `缺少包 ${need}`);
+}
+
+// ---------- 词库（初中 / 四级 / 六级）----------
+for (const [id, min] of [
+  ["junior", 1500],
+  ["cet4", 4000],
+  ["cet6", 5000]
+]) {
+  const words = read(`${id}.json`);
+  ok(words.length >= min, `${id} 词量偏少：${words.length}（应 ≥${min}）`);
+  const uniq = new Set(words.map((w) => w.w.toLowerCase()));
+  ok(uniq.size === words.length, `${id} 有重复单词：${words.length - uniq.size} 个`);
+  for (const w of words) {
+    ok(typeof w.w === "string" && w.w.length >= 1, `${id} 有空单词`);
+    ok(typeof w.m === "string" && w.m.length >= 1, `${id}：${w.w} 释义为空`);
+    ok(!/[|\n\r]/.test(w.w + w.m), `${id}：${w.w} 含竖线或换行（源表分隔符会串列）`);
+  }
+  const withPhone = words.filter((w) => w.p && w.p.length > 2).length;
+  const rate = withPhone / words.length;
+  ok(rate >= 0.95, `${id} 音标覆盖率偏低：${(rate * 100).toFixed(1)}%`);
+  const index0 = index.packs.find((p) => p.id === id);
+  ok(index0 && index0.count === words.length, `${id} 清单里的 count 与实际不符`);
 }
 
 // ---------- 成语 ----------
