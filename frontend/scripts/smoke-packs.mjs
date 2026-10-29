@@ -45,7 +45,27 @@ for (const r of recipes) {
 }
 const byMeal = recipes.reduce((a, r) => ((a[r.meal] = (a[r.meal] ?? 0) + 1), a), {});
 const withMat = recipes.filter((r) => r.materials.length > 0).length;
-console.log("食谱：", recipes.length, "道，餐次", JSON.stringify(byMeal), "| 有材料", withMat, "道");
+const matRate = withMat / recipes.length;
+console.log(
+  "食谱：",
+  recipes.length,
+  "道，餐次",
+  JSON.stringify(byMeal),
+  `| 有材料 ${withMat} 道（${(matRate * 100).toFixed(0)}%）`
+);
+// 购物清单、食材反查、本周食材构成都靠 materials，覆盖率掉下来这三个功能就废一半
+ok(matRate >= 0.8, `材料覆盖率偏低：${(matRate * 100).toFixed(0)}%，应 ≥ 80%`);
+for (const r of recipes) {
+  ok(r.materials.length <= 12, `材料过多（可能抽错）：${r.name} ${r.materials.length} 种`);
+  ok(
+    r.materials.every((m) => typeof m === "string" && m.length >= 1 && m.length <= 6),
+    `材料名异常：${r.name} → ${r.materials.join("/")}`
+  );
+  ok(
+    !r.materials.some((m) => /^(盐|油|酱油|生抽|料酒|糖|醋|味精|鸡精|淀粉|葱|姜|蒜|水)$/.test(m)),
+    `混入调味料：${r.name} → ${r.materials.join("/")}`
+  );
+}
 ok((byMeal.breakfast ?? 0) >= 4, `早餐太少，无法轮换：${byMeal.breakfast}`);
 ok((byMeal.lunch ?? 0) >= 10 && (byMeal.dinner ?? 0) >= 10, "午/晚餐池太小");
 

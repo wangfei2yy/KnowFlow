@@ -461,8 +461,69 @@ async function main() {
       tags: inferTags(r)
     });
   }
+  // ---- 材料清单：清洗旧数据 + 用抽取结果兜底 ----
+  // 旧材料来自「家常菜谱」PDF 的材料串，被切得很碎（「郫县豆/瓣」「克」「1/鲤鱼一条」），
+  // 直接展示会让购物清单变成噪声。所以分三步：剥份量 → 过滤调味料 → 判断可信度。
+  const CONDIMENT = new Set([
+    "盐", "食盐", "精盐", "油", "香油", "麻油", "酱油", "生抽", "老抽", "料酒", "黄酒", "米酒",
+    "糖", "白糖", "冰糖", "醋", "香醋", "白醋", "陈醋", "味精", "鸡精", "淀粉", "生粉",
+    "葱", "姜", "蒜", "葱段", "葱花", "葱末", "姜末", "姜片", "蒜末", "蒜片", "青蒜",
+    "花椒", "茴香", "八角", "桂皮", "辣椒", "辣椒油", "红油", "水", "清水", "高汤", "清汤",
+    "佐料", "调料", "豆豉", "甜面酱", "豆瓣酱", "黄酱",
+    "花生油", "猪油", "菜油", "色拉油", "橄榄油", "玉米油", "葵花油", "湿淀粉", "干淀粉",
+    "干辣椒节", "胡椒粉", "椒盐", "香料包", "各少许", "克", "毫升", "汤匙", "茶匙", "瓣", "节",
+    "小葱", "大葱", "香葱", "郫县豆瓣", "郫县豆"
+  ]);
+  const QTY_UNIT = "克|千克|公斤|斤|两|毫升|ml|汤匙|茶匙|大勺|小勺|勺|只|个|根|片|瓣|杯|碗|条|把|节|头|粒|颗|块|张|段";
+  // 剥掉份量：「鸡蛋(4只)」「卷心菜750克」「10克精盐」
+  const stripQty = (m) =>
+    m
+      .replace(/[（(][^）)]*[）)]/g, "")
+      .replace(new RegExp(`[0-9０-９./~～\\-—]+\\s*(?:${QTY_UNIT})+$`, "i"), "")
+      .replace(new RegExp(`^[0-9０-９./~～\\-—]+\\s*(?:${QTY_UNIT})`, "i"), "")
+      .replace(/[。；;，,、]+$/g, "")
+      .trim();
+  const looksLikeFood = (m) =>
+    /^[\u4e00-\u9fa5]{2,6}$/.test(m) &&
+    !CONDIMENT.has(m) &&
+    !/(各少许|适量|少许|各半|若干|做法|主料|辅料|调料)$/.test(m);
+
+  // 抽取结果（scripts/extract-materials.mjs）：菜名|材料1,材料2
+  const overlay = new Map();
+  const overlayFile = path.join(process.cwd(), "data", "food", "recipe-materials.psv");
+  if (fs.existsSync(overlayFile)) {
+    for (const line of fs.readFileSync(overlayFile, "utf8").split(/\r?\n/)) {
+      if (!line.trim() || line.startsWith("#")) continue;
+      const [name, list] = line.split("|");
+      if (!name || !list) continue;
+      overlay.set(name.trim(), list.split(/[,，]/).map((x) => x.trim()).filter(Boolean));
+    }
+  }
+
+  let fromOverlay = 0;
+  let droppedCondiment = 0;
+  for (const [name, r] of recipeMap) {
+    const raw = r.materials ?? [];
+    const cleaned = [...new Set(raw.map(stripQty))].filter(looksLikeFood);
+    droppedCondiment += raw.length - cleaned.length;
+    const ov = (overlay.get(name) ?? []).filter(looksLikeFood);
+
+    // 旧数据「不可信」的信号：剥完几乎不剩，或条目被切碎（出现 1 字词）。
+    // 这时宁可改用从做法里抽的，也不要把「郫县豆/瓣」端给用户。
+    const legacyBroken = cleaned.length === 0 || cleaned.some((m) => m.length < 2);
+    if (legacyBroken && ov.length) {
+      r.materials = ov.slice(0, 12);
+      fromOverlay += 1;
+    } else {
+      r.materials = cleaned;
+    }
+  }
+  console.log(`  材料：清洗旧数据剔除 ${droppedCondiment} 项；用抽取结果替换 ${fromOverlay} 道`);
+
   const recipes = [...recipeMap.values()];
   const byMeal = recipes.reduce((acc, r) => ((acc[r.meal] = (acc[r.meal] ?? 0) + 1), acc), {});
+  const withMat = recipes.filter((r) => r.materials.length).length;
+  console.log(`  有材料清单 ${withMat} / ${recipes.length} 道（${((withMat / recipes.length) * 100).toFixed(0)}%）`);
   console.log(`  去重后 ${recipes.length} 道，餐次分布：`, byMeal);
   console.log("  样例：", JSON.stringify(recipes[0], null, 0).slice(0, 300));
 

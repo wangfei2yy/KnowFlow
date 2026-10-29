@@ -28,7 +28,8 @@
     "test:idiom-game": "node scripts/run-idiom-game.mjs",
     "test:pair-game": "node scripts/run-pair.mjs",
     "test:runner": "node scripts/run-runner.mjs",
-    "table:words": "node scripts/export-word-table.mjs cet4"
+    "table:words": "node scripts/export-word-table.mjs cet4",
+    "build:food:materials": "node scripts/extract-materials.mjs"
   },
   "dependencies": {
     "dexie": "^4.0.8",
