@@ -12,10 +12,13 @@ import {
   CalendarRange,
   ListPlus,
   ChevronDown,
-  AlertCircle
+  AlertCircle,
+  Copy,
+  CheckCheck
 } from "lucide-vue-next";
 import { loadRecipes, loadIngredients, type IngredientEntry, type MealKey, type RecipeEntry } from "@/services/knowledgePack";
 import { CATEGORY_LABEL, categorizeIngredients } from "@/services/foodPack";
+import { groupShopping, loadChecked, saveChecked, shoppingText } from "@/services/kitchenService";
 import { useTaskStore } from "@/stores/taskStore";
 import { useAppStore } from "@/stores/appStore";
 
@@ -43,6 +46,31 @@ interface PlanDay {
 
 const plan = ref<PlanDay[]>([]);
 const ingredients = ref<IngredientEntry[]>([]);
+
+/** 购物清单勾选（按周隔离：换周自动清空，不会把上週的勾带过来） */
+const checked = ref<Set<string>>(loadChecked());
+const shoppingGroups = computed(() => groupShopping(shopping.value, ingredients.value, checked.value));
+const checkedCount = computed(() => shoppingGroups.value.reduce((n, g) => n + g.items.filter((i) => i.checked).length, 0));
+
+function toggleChecked(name: string) {
+  const next = new Set(checked.value);
+  if (next.has(name)) next.delete(name);
+  else next.add(name);
+  checked.value = next;
+  saveChecked(next);
+}
+
+/** 导出成纯文本：真正去超市带的是备忘录，不是网页 */
+async function copyList() {
+  const text = shoppingText(shoppingGroups.value);
+  try {
+    await navigator.clipboard.writeText(text);
+    appStore.showToast("购物清单已复制，粘到备忘录就能带走", "success");
+  } catch {
+    // 没有剪贴板权限时退回「选中文本」的老办法
+    appStore.showToast("复制失败，可长按选中清单手动复制", "error");
+  }
+}
 
 const MEALS: MealKey[] = ["breakfast", "lunch", "dinner"];
 const MEAL_LABEL: Record<MealKey, string> = {
@@ -290,15 +318,40 @@ async function addTodayToTasks() {
           购物清单（{{ shopping.length }} 种）
           <ChevronDown :size="14" class="ml-auto transition" :class="showList ? 'rotate-180' : ''" />
         </button>
-        <div v-if="showList" class="mt-3 flex flex-wrap gap-1.5">
-          <span
-            v-for="[name, count] in shopping"
-            :key="name"
-            class="rounded-lg bg-slate-50 px-2 py-1 text-xs text-slate-600"
-          >
-            {{ name }}
-            <span class="ml-0.5 text-[10px] text-slate-400">×{{ count }}</span>
-          </span>
+        <div v-if="showList" class="mt-3 space-y-3">
+          <div class="flex items-center gap-2 text-[11px] text-slate-400">
+            <span>已勾 {{ checkedCount }} / {{ shopping.length }}</span>
+            <button
+              v-if="checkedCount"
+              class="hover:text-slate-600"
+              @click="checked = new Set(); saveChecked(checked)"
+            >
+              全部取消
+            </button>
+            <button class="ml-auto flex items-center gap-1 rounded-lg bg-slate-100 px-2 py-1 hover:bg-slate-200" @click="copyList">
+              <Copy :size="11" /> 复制清单
+            </button>
+          </div>
+
+          <div v-for="g in shoppingGroups" :key="g.category">
+            <div class="mb-1 text-[11px] font-medium text-slate-500">
+              {{ g.label }}
+              <span class="ml-1 font-normal text-slate-400">{{ g.items.length }} 项</span>
+            </div>
+            <div class="flex flex-wrap gap-1.5">
+              <button
+                v-for="it in g.items"
+                :key="it.name"
+                class="flex items-center gap-1 rounded-lg px-2 py-1 text-xs transition"
+                :class="it.checked ? 'bg-slate-100 text-slate-400 line-through' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'"
+                @click="toggleChecked(it.name)"
+              >
+                <CheckCheck v-if="it.checked" :size="11" class="text-emerald-500" />
+                {{ it.name }}
+                <span class="text-[10px] text-slate-400">×{{ it.count }}</span>
+              </button>
+            </div>
+          </div>
         </div>
         <p v-else class="mt-2 text-[11px] text-slate-400">点开可看完整清单，数字表示出现在几餐里。</p>
       </div>

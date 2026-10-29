@@ -12,7 +12,9 @@ import {
   Clock,
   CheckCircle2,
   ListPlus,
-  ChefHat
+  ChefHat,
+  Refrigerator,
+  Check
 } from "lucide-vue-next";
 import {
   loadRecipes,
@@ -22,6 +24,7 @@ import {
   type RecipeEntry
 } from "@/services/knowledgePack";
 import { findIngredient } from "@/services/foodPack";
+import { commonMaterials, searchByPantry } from "@/services/kitchenService";
 import { useTaskStore } from "@/stores/taskStore";
 import { useAppStore } from "@/stores/appStore";
 
@@ -39,6 +42,40 @@ const active = ref<RecipeEntry | null>(null);
 const doneSteps = ref<Set<number>>(new Set());
 /** 图鉴里收录的食材，用来决定材料标签能不能点 */
 const ingredients = ref<IngredientEntry[]>([]);
+
+/** 「我有这些食材」：勾选后反查能做的菜 */
+const pantryOpen = ref(false);
+const pantry = ref<Set<string>>(new Set());
+const pantryKeyword = ref("");
+
+const allMaterials = computed(() => commonMaterials(recipes.value, 999));
+const pantryCandidates = computed(() => {
+  const kw = pantryKeyword.value.trim();
+  const base = allMaterials.value;
+  // 不做条数截断：高频材料只占前几十个，一旦截断，「番茄」这种低频词就彻底看不见了，
+  // 而用户并不知道要搜什么。全量铺开 + 搜索框收敛更符合「翻冰箱」的场景。
+  return kw ? base.filter((m) => m.name.includes(kw)) : base;
+});
+const pantryResult = computed(() =>
+  searchByPantry(recipes.value, [...pantry.value], 2, ingredients.value)
+);
+
+function togglePantry(name: string) {
+  const next = new Set(pantry.value);
+  if (next.has(name)) next.delete(name);
+  else next.add(name);
+  pantry.value = next;
+}
+
+function clearPantry() {
+  pantry.value = new Set();
+}
+
+/** 从反查结果直接打开某道菜 */
+function openFromPantry(r: RecipeEntry) {
+  pantryOpen.value = false;
+  open(r);
+}
 
 const MEALS: { key: "" | MealKey; label: string }[] = [
   { key: "", label: "全部" },
@@ -174,6 +211,11 @@ async function addToTasks(r: RecipeEntry) {
           <span v-if="m.key" class="opacity-70">{{ mealCount.find((c) => c.key === m.key)?.count }}</span>
         </button>
       </div>
+      <button class="btn-secondary" :disabled="!recipes.length" @click="pantryOpen = true">
+        <Refrigerator :size="14" />
+        我有这些食材
+        <span v-if="pantry.size" class="ml-1 rounded-full bg-brand-600 px-1.5 text-[10px] text-white">{{ pantry.size }}</span>
+      </button>
     </div>
 
     <div v-if="loading" class="card flex items-center gap-2 p-6 text-sm text-slate-500">
@@ -214,6 +256,89 @@ async function addToTasks(r: RecipeEntry) {
       <p v-if="filtered.length === 0" class="col-span-full py-10 text-center text-sm text-slate-400">
         没有匹配的菜，换个材料试试
       </p>
+    </div>
+
+    <!-- 冰箱反查：家里有什么 → 能做什么 -->
+    <div
+      v-if="pantryOpen"
+      class="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center sm:p-4"
+      role="dialog"
+      aria-modal="true"
+      @click.self="pantryOpen = false"
+    >
+      <div class="max-h-[88vh] w-full max-w-2xl overflow-y-auto rounded-t-2xl bg-white p-5 shadow-2xl sm:rounded-2xl">
+        <div class="flex items-center gap-2">
+          <Refrigerator :size="18" class="text-brand-600" />
+          <h2 class="text-base font-semibold text-slate-900">我有这些食材</h2>
+          <button class="ml-auto rounded p-1 text-slate-400 hover:bg-slate-100" aria-label="关闭" @click="pantryOpen = false">
+            <X :size="18" />
+          </button>
+        </div>
+        <p class="mt-1 text-xs text-slate-500">勾一下家里现有的，看看今天能做什么。差一两样的也会列出来。</p>
+
+        <div class="relative mt-3">
+          <Search :size="14" class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input v-model="pantryKeyword" class="input-base pl-9 text-sm" placeholder="找食材，如「番茄」" aria-label="搜索食材" />
+        </div>
+
+        <div class="mt-3 flex flex-wrap gap-1.5">
+          <button
+            v-for="m in pantryCandidates"
+            :key="m.name"
+            class="rounded-full px-2.5 py-1 text-xs transition"
+            :class="pantry.has(m.name) ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
+            @click="togglePantry(m.name)"
+          >
+            <Check v-if="pantry.has(m.name)" :size="10" class="mr-0.5 inline" />
+            {{ m.name }}
+          </button>
+          <span v-if="!pantryCandidates.length" class="text-xs text-slate-400">没有匹配的食材</span>
+        </div>
+
+        <div v-if="pantry.size" class="mt-4 border-t border-slate-100 pt-3">
+          <div class="flex items-center gap-2 text-xs text-slate-500">
+            <span>已选 {{ pantry.size }} 种</span>
+            <button class="text-slate-400 hover:text-slate-600" @click="clearPantry">清空</button>
+            <span class="ml-auto">
+              能做 {{ pantryResult.full.length }} 道 · 差一两样 {{ pantryResult.near.length }} 道
+            </span>
+          </div>
+
+          <div v-if="pantryResult.full.length" class="mt-3">
+            <div class="mb-1.5 text-xs font-medium text-emerald-600">现在就能做</div>
+            <div class="grid gap-1.5 sm:grid-cols-2">
+              <button
+                v-for="r in pantryResult.full.slice(0, 12)"
+                :key="'full' + r.id"
+                class="rounded-lg border border-emerald-100 bg-emerald-50/50 px-2.5 py-2 text-left text-sm text-slate-700 transition hover:border-emerald-200"
+                @click="openFromPantry(r)"
+              >
+                {{ r.name }}
+                <span class="ml-1 text-[11px] text-slate-400">{{ r.materials.length }} 种料</span>
+              </button>
+            </div>
+          </div>
+
+          <div v-if="pantryResult.near.length" class="mt-3">
+            <div class="mb-1.5 text-xs font-medium text-amber-600">差一两样</div>
+            <div class="grid gap-1.5 sm:grid-cols-2">
+              <button
+                v-for="n in pantryResult.near.slice(0, 12)"
+                :key="'near' + n.recipe.id"
+                class="rounded-lg border border-slate-100 bg-white px-2.5 py-2 text-left text-sm text-slate-700 transition hover:border-slate-200"
+                @click="openFromPantry(n.recipe)"
+              >
+                {{ n.recipe.name }}
+                <span class="ml-1 text-[11px] text-amber-600">缺 {{ n.missing.join("、") }}</span>
+              </button>
+            </div>
+          </div>
+
+          <p v-if="!pantryResult.full.length && !pantryResult.near.length" class="mt-3 text-xs text-slate-400">
+            这几样凑不出菜，再勾一两样试试（差三样以上的不列，免得清单太长）。
+          </p>
+        </div>
+      </div>
     </div>
 
     <!-- 详情弹层 -->
