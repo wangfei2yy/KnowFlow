@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
-import { useRouter } from "vue-router";
+import { ref, onMounted, nextTick, onBeforeUnmount } from "vue";
+import { useRouter, useRoute } from "vue-router";
 import { useTaskStore } from "@/stores/taskStore";
 import { useDocumentStore } from "@/stores/documentStore";
 import { useAppStore } from "@/stores/appStore";
@@ -12,12 +12,16 @@ import { formatDate } from "@/utils/format";
 import { Plus, Trash2, Calendar, FileText, CheckCircle2, Circle, Clock3 } from "lucide-vue-next";
 
 const router = useRouter();
+const route = useRoute();
 const taskStore = useTaskStore();
 const docStore = useDocumentStore();
 const appStore = useAppStore();
 const companionStore = useCompanionStore();
 
 const showCreate = ref(false);
+/** 从全局搜索跳转时高亮的任务 id */
+const highlightId = ref("");
+let highlightTimer: number | undefined;
 const showDeleteDialog = ref(false);
 const deleteTargetId = ref("");
 
@@ -34,7 +38,21 @@ const tabs: { key: "all" | TaskStatus; label: string }[] = [
 
 onMounted(async () => {
   await Promise.all([taskStore.load(), docStore.loadAll()]);
+
+  // 从全局搜索跳转：?task=<id> 切到「全部」并高亮该任务
+  const targetId = route.query.task as string | undefined;
+  if (targetId) {
+    taskStore.filterStatus = "all";
+    highlightId.value = targetId;
+    await nextTick();
+    document.getElementById(`task-${targetId}`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+    highlightTimer = window.setTimeout(() => {
+      highlightId.value = "";
+    }, 3000);
+  }
 });
+
+onBeforeUnmount(() => window.clearTimeout(highlightTimer));
 
 const priorityColor: Record<TaskPriority, string> = {
   high: "bg-red-50 text-red-600",
@@ -165,7 +183,9 @@ function isOverdue(task: Task): boolean {
       <div
         v-for="task in taskStore.filteredTasks"
         :key="task.id"
+        :id="`task-${task.id}`"
         class="card flex items-start gap-3 p-4 transition hover:shadow-md"
+        :class="highlightId === task.id ? 'ring-2 ring-brand-300' : ''"
       >
         <!-- 状态切换按钮 -->
         <button class="mt-0.5 shrink-0" @click="toggleStatus(task)">

@@ -140,6 +140,20 @@ onMounted(async () => {
   // 先加载资料与分类，再加载卡片，确保卡片能正确关联分类
   await docStore.loadAll();
   await loadCards();
+
+  // 从全局搜索跳转：?card=<id> 直接定位到该卡片（退出队列模式以便在全部卡片中查找）
+  const targetId = route.query.card as string | undefined;
+  if (targetId) {
+    queueMode.value = false;
+    const idx = reviewCards.value.findIndex((c) => c.id === targetId);
+    if (idx >= 0) {
+      currentIndex.value = idx;
+      flipped.value = false;
+    } else {
+      appStore.showToast("这张卡片可能已被删除", "info");
+    }
+  }
+
   window.addEventListener("keydown", onKeydown);
 });
 
