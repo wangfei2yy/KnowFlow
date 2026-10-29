@@ -13,6 +13,10 @@ frontend/dist-minitool/
 !.env.example
 backend/.env
 backend/.env.*
+# 本地临时令牌（只在本机使用，绝不入库、不推送）
+*令牌*
+*Token.txt
+*token.txt
 
 # Python
 __pycache__/
