@@ -4,6 +4,7 @@
  * 规则：每题 4 选 1，答对加分（连击加成），答错扣 1 条命并记入错词；
  * 生命耗尽或题目答完即结束。
  */
+import { healForStreak, maxLivesOf } from "@/games/lives";
 
 export interface WordEntry {
   w: string;
@@ -120,7 +121,7 @@ export function startSession(
     questions,
     index: 0,
     lives,
-    maxLives: lives,
+    maxLives: maxLivesOf(lives),
     score: 0,
     streak: 0,
     bestStreak: 0,
@@ -150,7 +151,10 @@ export function answerCurrent(session: QuestSession, choice: string): QuestSessi
   const streak = isCorrect ? session.streak + 1 : 0;
   // 连击加成：基础 10 分 + 连击 ×2（最多 +10）
   const gained = isCorrect ? 10 + Math.min(10, session.streak * 2) : 0;
-  const lives = isCorrect ? session.lives : session.lives - 1;
+  // 答对不扣命；连对 3 个回一格（上限 5），答错清零重新数
+  const lives = isCorrect
+    ? healForStreak(session.lives, session.maxLives, streak)
+    : session.lives - 1;
   const wrongWords = isCorrect
     ? session.wrongWords
     : [...session.wrongWords, { w: q.word, p: q.phonetic, m: q.answerFull }];

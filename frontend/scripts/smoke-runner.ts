@@ -2,6 +2,7 @@
  * 单词跑酷引擎单测：波次生成、穿门判定、换道、计分、命数、加速、计时、不限时。
  * 跑法：npm run test:runner
  */
+import { LIFE_RULE } from "@/games/lives";
 import {
   createRunnerGame,
   moveLane,
@@ -167,4 +168,22 @@ const before = jump.gates[0].x;
 jump = stepRunner(jump, 5);
 ok(before - jump.gates[0].x < RUNNER.baseSpeed * 0.06, "dt 应被夹到 50ms");
 
-console.log("\n✅ 单词跑酷引擎 12 组断言全部通过");
+// 13) 连穿 3 扇对的门回一格（上限 5）
+let heal: RunnerState = startRunner(createRunnerGame({ words, seed: 41, untimed: true }));
+heal = playNextWave(heal, false);
+ok(heal.lives === RUNNER.lives - 1, "穿错掉一格");
+heal = playNextWave(heal, true);
+heal = playNextWave(heal, true);
+ok(heal.lives === RUNNER.lives - 1, "连穿 2 扇还不回血");
+heal = playNextWave(heal, true);
+ok(heal.lives === RUNNER.lives, "连穿第 3 扇回一格");
+
+let capped: RunnerState = startRunner(createRunnerGame({ words, seed: 42, untimed: true }));
+for (let i = 0; i < 9; i++) {
+  capped = playNextWave(capped, true);
+  if (capped.phase !== "playing") break;
+}
+ok(capped.lives === LIFE_RULE.cap, `连穿 9 扇应停在 ${LIFE_RULE.cap} 格，实际 ${capped.lives}`);
+console.log("13) 回血：连穿 3 扇 +1，封顶", capped.lives, "格");
+
+console.log("\n✅ 单词跑酷引擎 13 组断言全部通过");

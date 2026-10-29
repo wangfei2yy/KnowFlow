@@ -2,6 +2,7 @@
  * 成语填空引擎单测：题面构造、干扰字、计分连击、命数、计时、错题记录。
  * 跑法：npm run test:idiom-game
  */
+import { LIFE_RULE } from "@/games/lives";
 import {
   answerBlank,
   createIdiomGame,
@@ -35,7 +36,7 @@ const idioms: IdiomEntry[] = [
 // 1) 建局
 const base = createIdiomGame({ idioms, seed: 20261029 });
 ok(base.phase === "ready", "新建应为 ready");
-ok(base.lives === IDIOM_GAME.lives && base.maxLives === IDIOM_GAME.lives, "初始 3 条命");
+ok(base.lives === IDIOM_GAME.lives && base.maxLives === LIFE_RULE.cap, `初始 ${IDIOM_GAME.lives} 条命、上限 ${LIFE_RULE.cap}`);
 ok(base.score === 0 && base.correct === 0 && base.wrong === 0, "初始计数为 0");
 ok(base.pool.length === idioms.length, "词池应包含全部成语");
 ok(!!base.question, "应有题目");
@@ -131,4 +132,19 @@ ok(["playing", "over"].includes(long.phase), "长跑后状态应合法");
 ok(Number.isFinite(long.score), "分数应为有限数");
 ok(long.correct + long.wrong > 0, "应至少答过题");
 
-console.log("\n✅ 成语填空引擎 11 组断言全部通过");
+// 12) 连对 3 个回一格（上限 5）
+let heal: IdiomGameState = startIdiomGame(createIdiomGame({ idioms, seed: 51 }));
+heal = answerBlank(heal, heal.question!.options.find((o) => o !== heal.question!.answer)!);
+ok(heal.lives === IDIOM_GAME.lives - 1, "答错掉一格");
+heal = answerBlank(heal, heal.question!.answer);
+heal = answerBlank(heal, heal.question!.answer);
+ok(heal.lives === IDIOM_GAME.lives - 1, "连对 2 个还不回血");
+heal = answerBlank(heal, heal.question!.answer);
+ok(heal.lives === IDIOM_GAME.lives, "连对第 3 个回一格");
+
+let capped: IdiomGameState = startIdiomGame(createIdiomGame({ idioms, seed: 52 }));
+for (let i = 0; i < 9; i++) capped = answerBlank(capped, capped.question!.answer);
+ok(capped.lives === LIFE_RULE.cap, `连对 9 个应停在 ${LIFE_RULE.cap} 格，实际 ${capped.lives}`);
+console.log("12) 回血：连对 3 个 +1，封顶", capped.lives, "格");
+
+console.log("\n✅ 成语填空引擎 12 组断言全部通过");

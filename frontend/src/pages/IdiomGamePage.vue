@@ -5,7 +5,7 @@
  * 原本的占位玩法是「成语接龙」，但内置 172 条成语里只有 13% 的末字能接上另一条，
  * 严格接龙两步就断，所以换成同数据能撑起来的填空。
  */
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useAppStore } from "@/stores/appStore";
 import { useReviewStore } from "@/stores/reviewStore";
@@ -38,6 +38,14 @@ const allIdioms = ref<IdiomEntry[]>([]);
 /** 练习模式：不限时 */
 const untimed = ref(loadUntimed());
 const game = ref<IdiomGameState | null>(null);
+// 必须放在 game 之后声明，否则 watch 的 getter 会先碰到 TDZ
+// 连对 3 个回一格：引擎改了 lives，这里给一句明文提示
+watch(
+  () => game.value?.lives ?? 0,
+  (now, before) => {
+    if (now > before) appStore.showToast("连对 3 个 · 血量 +1", "success");
+  }
+);
 const result = ref<IdiomGameState | null>(null);
 const picked = ref("");
 const revealed = ref(false);

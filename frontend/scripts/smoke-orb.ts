@@ -2,6 +2,7 @@
  * 球球引擎单测：不碰 DOM、不碰 canvas，纯状态推进。
  * 跑法：npm run test:orb
  */
+import { LIFE_RULE } from "@/games/lives";
 import {
   createOrbGame,
   startOrb,
@@ -50,7 +51,7 @@ function eat(state: OrbState, correct: boolean): OrbState {
 // ---------------- 1) 建局 ----------------
 const base = createOrbGame({ words, seed: 20261029 });
 ok(base.phase === "ready", "新建应为 ready");
-ok(base.lives === ORB.lives && base.maxLives === ORB.lives, "初始 3 条命");
+ok(base.lives === ORB.lives && base.maxLives === LIFE_RULE.cap, `初始 ${ORB.lives} 条命、上限 ${LIFE_RULE.cap}`);
 ok(base.player.r === ORB.startR, "初始半径 40");
 ok(base.foods.length === ORB.foodCount, `场上应有 ${ORB.foodCount} 个球，实际 ${base.foods.length}`);
 ok(base.foods.filter((f) => f.correct).length === 1, "场上必须恰好 1 个正确球");
@@ -218,4 +219,30 @@ ok(budget.foods.length <= ORB.foodCount + 1, "球数不应无限增长");
 ok(budget.foods.every((f) => Number.isFinite(f.x) && Number.isFinite(f.y)), "球坐标不应 NaN");
 console.log("12) 跑 1000 帧：得分", budget.score, "正确", budget.correct, "错误", budget.wrong, "球数", budget.foods.length);
 
-console.log("\n✅ 球球引擎 12 组断言全部通过");
+// ---------------- 13) 连对 3 个回一格（上限 5）----------------
+let heal = startOrb(createOrbGame({ words, seed: 41 }));
+heal = eat(heal, false);
+ok(heal.lives === ORB.lives - 1, "吃错掉一格");
+heal = eat(heal, true);
+heal = eat(heal, true);
+ok(heal.lives === ORB.lives - 1, "连对 2 个还不回血");
+heal = eat(heal, true);
+ok(heal.lives === ORB.lives, "连对第 3 个回一格");
+
+// 答错清零重新数：2 对 + 1 错 + 2 对 不应回血
+let reset = startOrb(createOrbGame({ words, seed: 42 }));
+reset = eat(reset, false);
+reset = eat(reset, true);
+reset = eat(reset, true);
+reset = eat(reset, false);
+reset = eat(reset, true);
+reset = eat(reset, true);
+ok(reset.lives === ORB.lives - 2, "答错后连对数应重新开始，不能凑满 3 个就回血");
+
+// 连对 9 个：4 → 5 之后封顶
+let capped = startOrb(createOrbGame({ words, seed: 43 }));
+for (let i = 0; i < 9; i++) capped = eat(capped, true);
+ok(capped.lives === LIFE_RULE.cap, `连对 9 个应停在 ${LIFE_RULE.cap} 格，实际 ${capped.lives}`);
+console.log("13) 回血：连对 3 个 +1，封顶", capped.lives, "格");
+
+console.log("\n✅ 球球引擎 13 组断言全部通过");

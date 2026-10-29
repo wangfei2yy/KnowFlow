@@ -8,6 +8,7 @@
  * 玩法：玩家球上写中文短义，场上 14 个球写英文单词，吃对涨球、吃错掉命。
  */
 import { shortMeaning, type WordEntry } from "@/services/quest/engine";
+import { healForStreak, maxLivesOf } from "@/games/lives";
 
 export type { WordEntry };
 
@@ -28,7 +29,7 @@ export const ORB = {
   /** 半径 r 时的移动速度 = speedBase / (1 + r / speedDiv) */
   speedBase: 250,
   speedDiv: 160,
-  /** 初始命 */
+  /** 初始命（上限见 games/lives.ts 的 LIFE_RULE：连对 3 个回 1 格，最多 5 格） */
   lives: 3,
   /** 时长（秒） */
   duration: 60,
@@ -283,7 +284,7 @@ export function createOrbGame(config: OrbConfig): OrbState {
     target: null,
     label: "",
     lives,
-    maxLives: lives,
+    maxLives: maxLivesOf(lives),
     score: 0,
     combo: 0,
     bestCombo: 0,
@@ -422,6 +423,8 @@ function resolveEat(state: OrbState, food: Food): OrbState {
     state.combo = state.combo + 1;
     state.bestCombo = Math.max(state.bestCombo, state.combo);
     state.score += 10 + Math.min(10, (state.combo - 1) * 2);
+    // 连对 3 个回一格（上限 5）：血条要有正反馈，不然只能一路挨打
+    state.lives = healForStreak(state.lives, state.maxLives, state.combo);
     state.player.r = Math.max(ORB.minR, state.player.r * ORB.grow);
 
     state.orderPos = (state.orderPos + 1) % Math.max(1, state.order.length);

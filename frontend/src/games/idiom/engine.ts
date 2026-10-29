@@ -8,6 +8,7 @@
  * 和 orb 一样不碰 DOM、不用 Math.random（种子存在 state 里），便于复现与单测。
  */
 import type { IdiomEntry } from "@/services/knowledgePack";
+import { healForStreak, maxLivesOf } from "@/games/lives";
 
 export const IDIOM_GAME = {
   /** 一局时长（秒） */
@@ -154,7 +155,7 @@ export function createIdiomGame(config: IdiomConfig, seedOverride?: number): Idi
     correct: 0,
     wrong: 0,
     lives: config.lives ?? IDIOM_GAME.lives,
-    maxLives: config.lives ?? IDIOM_GAME.lives,
+    maxLives: maxLivesOf(config.lives ?? IDIOM_GAME.lives),
     elapsed: 0,
     duration: config.untimed ? Number.POSITIVE_INFINITY : (config.duration ?? IDIOM_GAME.duration),
     wrongWords: [],
@@ -197,6 +198,8 @@ export function answerBlank(prev: IdiomGameState, picked: string): IdiomGameStat
     state.combo = prev.combo + 1;
     state.bestCombo = Math.max(prev.bestCombo, state.combo);
     state.score = prev.score + IDIOM_GAME.base + Math.min(IDIOM_GAME.comboCap, (state.combo - 1) * IDIOM_GAME.comboStep);
+    // 连对 3 个回一格（上限 5）
+    state.lives = healForStreak(state.lives, state.maxLives, state.combo);
   } else {
     state.wrong = prev.wrong + 1;
     state.combo = 0;

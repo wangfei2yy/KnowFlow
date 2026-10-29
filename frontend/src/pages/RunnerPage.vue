@@ -41,7 +41,7 @@ const untimed = ref(loadUntimed());
 const stageEl = ref<HTMLElement | null>(null);
 const canvasEl = ref<HTMLCanvasElement | null>(null);
 
-const hud = ref({ time: 0, score: 0, lives: 3, maxLives: 3, combo: 0, label: "" });
+const hud = ref({ time: 0, score: 0, lives: 3, maxLives: 5, combo: 0, label: "" });
 const result = ref<RunnerState | null>(null);
 const banked = ref(0);
 
@@ -189,6 +189,8 @@ function syncHud(force = false) {
   ) {
     return;
   }
+  // 连穿 3 扇对的门回一格
+  if (next.lives > prev.lives) appStore.showToast("连对 3 个 · 血量 +1", "success");
   hud.value = next;
 }
 

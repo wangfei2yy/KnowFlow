@@ -10,6 +10,7 @@ import {
   shuffle
 } from "@/services/quest/engine";
 import type { WordEntry } from "@/services/quest/engine";
+import { LIFE_RULE } from "@/games/lives";
 
 const ok = (c: boolean, m: string) => {
   if (!c) throw new Error("断言失败：" + m);
@@ -95,6 +96,21 @@ ok(loadProgress().cet4.bestScore === 30, "进度应持久化");
 
 // 8) 词库不足时不出题
 ok(buildQuestions(words.slice(0, 2), 10).length === 0, "词量不足 4 时不应出题");
+
+// 13) 连对 3 题回一格命（上限 5）
+let heal = startSession(words, { size: 10, rng: seeded(31) });
+ok(heal.maxLives === LIFE_RULE.cap, `血量上限应为 ${LIFE_RULE.cap}，实际 ${heal.maxLives}`);
+heal = answerCurrent(heal, currentQuestion(heal)!.options.find((o) => o !== currentQuestion(heal)!.answer)!);
+ok(heal.lives === 2, "答错掉一格");
+heal = nextQuestion(heal);
+heal = answerCurrent(heal, currentQuestion(heal)!.answer);
+heal = nextQuestion(heal);
+heal = answerCurrent(heal, currentQuestion(heal)!.answer);
+heal = nextQuestion(heal);
+ok(heal.lives === 2, "连对 2 题还不回血");
+heal = answerCurrent(heal, currentQuestion(heal)!.answer);
+ok(heal.lives === 3, "连对第 3 题回一格");
+console.log("13) 回血：连对 3 题 +1，当前", heal.lives, "格");
 
 console.log("QUEST SMOKE PASS");
 process.exit(0);

@@ -28,6 +28,7 @@ import {
   type OrbState
 } from "@/games/orb/engine";
 import { createOrbRenderer, tierName, type OrbRenderer } from "@/games/orb/render";
+import { LIFE_RULE } from "@/games/lives";
 import { createOrbInput, type JoystickState, type OrbInput } from "@/games/orb/input";
 import { IS_MINITOOL } from "@/utils/runtime";
 import {
@@ -77,7 +78,7 @@ const hud = ref<Hud>({
   time: ORB.duration,
   score: 0,
   lives: ORB.lives,
-  maxLives: ORB.lives,
+  maxLives: LIFE_RULE.cap,
   combo: 0,
   tier: 0,
   label: ""
@@ -246,6 +247,12 @@ function syncHud(force = false) {
     next.label !== prev.label;
   if (!changed) return;
 
+  // 回血提示：连对 3 个才会 +1，不提示玩家根本注意不到
+  if (next.lives > prev.lives) {
+    banner.value = `连对 3 个 · 血量 +1`;
+    window.clearTimeout(bannerTimer);
+    bannerTimer = window.setTimeout(() => (banner.value = ""), 1400);
+  }
   // 升级提示
   if (next.tier > prev.tier) {
     banner.value = `已进入 ${TIERS[next.tier]?.name ?? ""}`;

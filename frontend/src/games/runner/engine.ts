@@ -8,6 +8,7 @@
  * 和其它游戏一样：不碰 DOM、随机数走 state 里的 LCG，可复现、可单测。
  */
 import { spellSimilarity, type WordEntry } from "@/games/orb/engine";
+import { healForStreak, maxLivesOf } from "@/games/lives";
 import { shortMeaning } from "@/services/quest/engine";
 
 export const RUNNER = {
@@ -161,7 +162,7 @@ export function createRunnerGame(config: RunnerConfig): RunnerState {
     correct: 0,
     wrong: 0,
     lives: config.lives ?? RUNNER.lives,
-    maxLives: config.lives ?? RUNNER.lives,
+    maxLives: maxLivesOf(config.lives ?? RUNNER.lives),
     elapsed: 0,
     duration: config.untimed ? Number.POSITIVE_INFINITY : (config.duration ?? RUNNER.duration),
     speed: RUNNER.baseSpeed,
@@ -249,6 +250,8 @@ export function stepRunner(prev: RunnerState, dtRaw: number): RunnerState {
           state.combo += 1;
           state.bestCombo = Math.max(state.bestCombo, state.combo);
           state.score += RUNNER.base + Math.min(RUNNER.comboCap, (state.combo - 1) * RUNNER.comboStep);
+          // 连穿 3 扇对的门回一格（上限 5）
+          state.lives = healForStreak(state.lives, state.maxLives, state.combo);
         } else {
           state.wrong += 1;
           state.combo = 0;

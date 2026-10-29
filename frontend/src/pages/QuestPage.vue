@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { useAppStore } from "@/stores/appStore";
 import { useCompanionStore } from "@/stores/companionStore";
@@ -42,6 +42,14 @@ const loading = ref(false);
 const activePack = ref("cet4");
 const words = ref<WordEntry[]>([]);
 const session = ref<QuestSession | null>(null);
+
+// 连对 3 题回一格命（上限 5），给一句明文提示
+watch(
+  () => session.value?.lives ?? 0,
+  (now, before) => {
+    if (now > before) appStore.showToast("连对 3 题 · 生命 +1", "success");
+  }
+);
 const progress = ref(loadProgress());
 const bankedCount = ref(0);
 /** 未完成的一局（按词库存档），用于大厅显示「继续」 */
