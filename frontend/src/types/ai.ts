@@ -1,5 +1,5 @@
 export type AIJobType = "summary" | "qa" | "actions" | "flashcards";
-export type AIJobStatus = "pending" | "running" | "success" | "failed";
+export type AIJobStatus = "pending" | "running" | "success" | "failed" | "canceled";
 
 export interface SummaryResult {
   summary: string;

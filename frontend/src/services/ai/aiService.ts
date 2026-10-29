@@ -21,8 +21,20 @@ function clampContent(content: string): string {
   return content.length > MAX_INPUT_CHARS ? content.slice(0, MAX_INPUT_CHARS) + "…" : content;
 }
 
+/** 用户主动取消：不视为失败，已生成的部分结果随错误一起带出 */
+export class CanceledError extends Error {
+  constructor(public partial: FlashcardDraft[] = []) {
+    super("已取消生成");
+    this.name = "CanceledError";
+  }
+}
+
+function isAbort(e: unknown): boolean {
+  return e instanceof DOMException && e.name === "AbortError";
+}
+
 /**
- * 执行一次 AI 任务，记录 job 状态（pending/running/success/failed）。
+ * 执行一次 AI 任务，记录 job 状态（pending/running/success/failed/canceled）。
  */
 export async function runJob(
   provider: AIProvider,
@@ -47,10 +59,12 @@ export async function runJob(
     });
     return result;
   } catch (e) {
+    const canceled = e instanceof CanceledError;
     const msg = e instanceof Error ? e.message : "AI 服务暂时不可用";
     await db.aiJobs.update(job.id, {
-      status: "failed",
+      status: canceled ? "canceled" : "failed",
       errorMessage: msg,
+      result: canceled ? toPlain((e as CanceledError).partial) : undefined,
       completedAt: new Date().toISOString()
     });
     throw e;
@@ -100,7 +114,8 @@ export function generateCardsFromContent(
   content: string,
   count: number,
   documentId?: string,
-  onProgress?: (done: number, total: number) => void
+  onProgress?: (done: number, total: number) => void,
+  options: { signal?: AbortSignal } = {}
 ) {
   const text = (content ?? "").trim();
   // count=0 表示自动：按篇幅估算知识点数量，避免「几十个知识点只出 3 张」
@@ -121,9 +136,21 @@ export function generateCardsFromContent(
       }
       if (chunks.length <= 1) {
         onProgress?.(1, 1);
-        const cards = await generateChunkWithRetry(provider, text, target, 0, { left: FLASHCARD_MAX_CALLS });
-        // 单段也要去重/清理，避免模型返回重复或空卡片
-        return dedupeCards(cards, target);
+        try {
+          const cards = await generateChunkWithRetry(
+            provider,
+            text,
+            target,
+            0,
+            { left: FLASHCARD_MAX_CALLS },
+            options.signal
+          );
+          // 单段也要去重/清理，避免模型返回重复或空卡片
+          return dedupeCards(cards, target);
+        } catch (e) {
+          if (isAbort(e)) throw new CanceledError([]);
+          throw e;
+        }
       }
 
       // 每段分摊目标张数，单次最多 8 张（再多容易输出截断或质量下降）
@@ -131,11 +158,21 @@ export function generateCardsFromContent(
       const all: FlashcardDraft[] = [];
       const budget = { left: FLASHCARD_MAX_CALLS };
       for (let i = 0; i < chunks.length; i++) {
+        if (options.signal?.aborted) throw new CanceledError(dedupeCards(all, target));
         onProgress?.(i + 1, chunks.length);
         try {
-          const cards = await generateChunkWithRetry(provider, chunks[i], Math.min(perChunk, 8), 0, budget);
+          const cards = await generateChunkWithRetry(
+            provider,
+            chunks[i],
+            Math.min(perChunk, 8),
+            0,
+            budget,
+            options.signal
+          );
           all.push(...cards);
-        } catch {
+        } catch (e) {
+          // 用户取消：保留已生成部分
+          if (isAbort(e)) throw new CanceledError(dedupeCards(all, target));
           // 某一段彻底失败不拖垮整体：已生成的卡片照常返回
           if (all.length === 0) throw new Error("AI 没有返回可用卡片，请减少卡片数量或缩短资料后重试");
         }
@@ -155,13 +192,16 @@ async function generateChunkWithRetry(
   content: string,
   count: number,
   depth = 0,
-  budget: { left: number } = { left: FLASHCARD_MAX_CALLS }
+  budget: { left: number } = { left: FLASHCARD_MAX_CALLS },
+  signal?: AbortSignal
 ): Promise<FlashcardDraft[]> {
   try {
+    if (signal?.aborted) throw new DOMException("已取消", "AbortError");
     if (budget.left <= 0) throw new Error("请求次数已达上限，请减少卡片数量后重试");
     budget.left -= 1;
-    return await provider.generateFlashcards({ content, count });
+    return await provider.generateFlashcards({ content, count }, { signal });
   } catch (e) {
+    if (isAbort(e)) throw e;
     // 预算耗尽 / 已到最大重试深度 / 内容本身已经很短，直接抛出
     if (budget.left <= 0 || depth >= 3 || content.length < 600) throw e;
 
@@ -173,7 +213,7 @@ async function generateChunkWithRetry(
     let lastError: unknown = e;
     for (const part of parts) {
       try {
-        out.push(...(await generateChunkWithRetry(provider, part, perPart, depth + 1, budget)));
+        out.push(...(await generateChunkWithRetry(provider, part, perPart, depth + 1, budget, signal)));
       } catch (err) {
         lastError = err;
       }
@@ -181,6 +221,25 @@ async function generateChunkWithRetry(
     if (out.length === 0) throw lastError;
     return out;
   }
+}
+
+export interface CardEstimate {
+  /** 分段数 */
+  chunks: number;
+  /** 预计卡片数 */
+  cards: number;
+  /** 预计请求次数（下限，失败重试可能更多） */
+  calls: number;
+}
+
+/** 生成前预估：让用户知道要跑多久、大概发几次请求 */
+export function estimateCards(contentLength: number, count: number): CardEstimate {
+  const target = count > 0 ? Math.min(count, FLASHCARD_HARD_MAX) : autoCardTarget(contentLength);
+  let chunks = Math.max(1, Math.ceil(contentLength / FLASHCARD_CHUNK_CHARS));
+  chunks = Math.min(chunks, FLASHCARD_MAX_CHUNKS);
+  const perChunk = Math.max(2, Math.ceil(target / chunks));
+  const cards = Math.min(target, perChunk * chunks);
+  return { chunks, cards, calls: chunks };
 }
 
 /** 自动模式的张数估算：约每 500 字一个知识点，5~60 张 */

@@ -1,4 +1,5 @@
-import { generateCardsFromContent } from "@/services/ai/aiService";
+import { generateCardsFromContent, estimateCards, CanceledError } from "@/services/ai/aiService";
+import { db } from "@/db/database";
 import type { AIProvider } from "@/services/ai/AIProvider";
 
 function makeFake() {
@@ -80,6 +81,54 @@ async function main() {
   const fragileCards = await generateCardsFromContent(fragile, "语法点。".repeat(800), 0, "d5");
   console.log("5) 长输入易失败模型 → 仍生成:", fragileCards.length, "张（自动二分重试）");
   if (fragileCards.length === 0) throw new Error("二分重试没有生效");
+
+  // 6) 预估：段数 / 张数 / 请求次数
+  const est = estimateCards(12800, 0);
+  console.log("6) 预估 →", JSON.stringify(est));
+  if (est.chunks !== 6) throw new Error(`段数预估应为 6，实际 ${est.chunks}`);
+  if (est.cards < 20 || est.cards > 30) throw new Error(`张数预估异常：${est.cards}`);
+  if (est.calls !== est.chunks) throw new Error("请求次数应等于段数");
+
+  // 7) 取消：保留已生成部分，任务状态记为 canceled
+  await db.aiJobs.clear();
+  let calls = 0;
+  const slow: AIProvider = {
+    name: "slow",
+    summarize: async () => { throw new Error("n/a"); },
+    answerQuestion: async () => { throw new Error("n/a"); },
+    extractTasks: async () => [],
+    chat: async () => "",
+    generateFlashcards: async ({ count }, options) => {
+      calls += 1;
+      await new Promise((r) => setTimeout(r, 15));
+      if (options?.signal?.aborted) throw new DOMException("已取消", "AbortError");
+      return Array.from({ length: Math.min(count, 3) }, (_, i) => ({
+        question: `慢${calls}-${i}`,
+        answer: "A"
+      }));
+    }
+  };
+  const ac = new AbortController();
+  let canceledPartial = -1;
+  try {
+    await generateCardsFromContent(
+      slow,
+      "语法点。".repeat(1600),
+      0,
+      "d7",
+      (done) => { if (done >= 2) ac.abort(); },
+      { signal: ac.signal }
+    );
+    throw new Error("应当抛出 CanceledError");
+  } catch (e) {
+    if (!(e instanceof CanceledError)) throw new Error("取消应抛 CanceledError，实际：" + e);
+    canceledPartial = e.partial.length;
+  }
+  const jobs = await db.aiJobs.toArray();
+  const lastJob = jobs[jobs.length - 1];
+  console.log("7) 取消 → 已保留", canceledPartial, "张；任务状态", lastJob?.status);
+  if (canceledPartial <= 0) throw new Error("取消后应保留已生成部分");
+  if (lastJob?.status !== "canceled") throw new Error(`任务状态应为 canceled，实际 ${lastJob?.status}`);
 
   console.log("CARDS SMOKE PASS");
   process.exit(0);

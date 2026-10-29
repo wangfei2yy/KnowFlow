@@ -15,7 +15,14 @@ export interface AIProvider {
   summarize(input: { title: string; content: string }): Promise<SummaryResult>;
   answerQuestion(input: { question: string; contexts: SourceContext[] }): Promise<AnswerResult>;
   extractTasks(input: { content: string }): Promise<ExtractedTask[]>;
-  generateFlashcards(input: { content: string; count: number }): Promise<FlashcardDraft[]>;
+  /**
+   * 生成卡片。
+   * @param options.signal 取消信号：卡片生成可能发起多次请求，用户可中途取消
+   */
+  generateFlashcards(
+    input: { content: string; count: number },
+    options?: { signal?: AbortSignal }
+  ): Promise<FlashcardDraft[]>;
   /**
    * 通用对话：给一个系统提示词 + 对话历史，返回文本回复。
    * 用于陪伴机器人等自由对话场景。

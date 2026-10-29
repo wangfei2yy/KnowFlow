@@ -10,7 +10,9 @@ import {
   summarizeDocument,
   answerFromDocuments,
   extractTasksFromContent,
-  generateCardsFromContent
+  generateCardsFromContent,
+  estimateCards,
+  CanceledError
 } from "@/services/ai/aiService";
 import { createFlashcard } from "@/services/flashcardService";
 import type { SummaryResult, AnswerResult, ExtractedTask, FlashcardDraft } from "@/types/ai";
@@ -51,6 +53,15 @@ const extractedTasks = ref<ExtractedTask[]>([]);
 // 卡片
 const cardCount = ref(0);
 const cardProgress = ref("");
+/** 卡片生成的取消控制器 */
+let cardAbort: AbortController | null = null;
+
+/** 生成前预估：段数 / 张数 / 请求次数 */
+const cardEstimate = computed(() => {
+  const doc = selectedDoc.value;
+  if (!doc) return null;
+  return estimateCards(doc.content?.length ?? 0, cardCount.value);
+});
 const cardDrafts = ref<FlashcardDraft[]>([]);
 
 const loading = ref(false);
@@ -145,22 +156,41 @@ async function runCards() {
   if (!doc) return;
   loading.value = true;
   errorMsg.value = "";
+  cardProgress.value = "";
+  cardAbort = new AbortController();
+
   try {
-    cardProgress.value = "";
     cardDrafts.value = (await generateCardsFromContent(
       aiStore.provider,
       doc.content,
       cardCount.value,
       doc.id,
       (done, total) => {
-        cardProgress.value = total > 1 ? `已处理 ${done}/${total} 段…` : "";
-      }
+        cardProgress.value =
+          total > 1 ? `已处理 ${done}/${total} 段 · 已生成 ${cardDrafts.value.length} 张` : "";
+      },
+      { signal: cardAbort.signal }
     )) as FlashcardDraft[];
   } catch (e) {
-    errorMsg.value = e instanceof Error ? e.message : "AI 服务暂时不可用";
+    if (e instanceof CanceledError) {
+      cardDrafts.value = e.partial;
+      appStore.showToast(
+        e.partial.length > 0 ? `已取消，保留前 ${e.partial.length} 张` : "已取消生成",
+        "info"
+      );
+    } else {
+      errorMsg.value = e instanceof Error ? e.message : "AI 服务暂时不可用";
+    }
   } finally {
     loading.value = false;
+    cardAbort = null;
+    cardProgress.value = "";
   }
+}
+
+/** 取消正在进行的卡片生成（保留已生成部分） */
+function cancelCards() {
+  cardAbort?.abort();
 }
 
 // 确认写入操作
@@ -366,6 +396,7 @@ function gotoDoc(id: string) {
           </div>
           <div class="flex items-center gap-2">
             <span v-if="loading && cardProgress" class="text-xs text-slate-400">{{ cardProgress }}</span>
+            <button v-if="loading" class="btn-secondary" @click="cancelCards">取消</button>
             <button class="btn-primary" :disabled="loading" @click="runCards">
               <Layers :size="16" /> {{ loading ? "生成中…" : "生成卡片" }}
             </button>
@@ -373,6 +404,10 @@ function gotoDoc(id: string) {
         </div>
         <p class="mt-2 text-xs text-slate-400">
           长资料会自动分段逐段提取，覆盖全文；自动模式约每 500 字一个知识点（5~60 张）。
+          <span v-if="cardEstimate" class="text-slate-500">
+            本次预计：{{ cardEstimate.chunks }} 段 / 约 {{ cardEstimate.cards }} 张 /
+            {{ cardEstimate.calls }} 次请求。
+          </span>
         </p>
         <div v-if="cardDrafts.length > 0" class="mt-4 space-y-3">
           <div v-for="(c, i) in cardDrafts" :key="i" class="card p-4">

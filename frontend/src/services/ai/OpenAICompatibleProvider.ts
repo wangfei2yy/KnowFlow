@@ -31,7 +31,11 @@ export class OpenAICompatibleProvider implements AIProvider {
     return `${base}/chat/completions`;
   }
 
-  private async chatRaw(messages: { role: string; content: string }[], maxTokens?: number): Promise<string> {
+  private async chatRaw(
+    messages: { role: string; content: string }[],
+    maxTokens?: number,
+    signal?: AbortSignal
+  ): Promise<string> {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (this.apiKey) {
       headers.Authorization = `Bearer ${this.apiKey}`;
@@ -42,7 +46,8 @@ export class OpenAICompatibleProvider implements AIProvider {
     const res = await fetch(this.endpoint(), {
       method: "POST",
       headers,
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
+      signal
     });
     if (!res.ok) {
       if (res.status === 401) {
@@ -128,7 +133,10 @@ export class OpenAICompatibleProvider implements AIProvider {
     return parseJSONArray<ExtractedTask>(raw);
   }
 
-  async generateFlashcards({ content, count }: { content: string; count: number }): Promise<FlashcardDraft[]> {
+  async generateFlashcards(
+    { content, count }: { content: string; count: number },
+    options: { signal?: AbortSignal } = {}
+  ): Promise<FlashcardDraft[]> {
     const want = count > 0 ? count : 8;
     const countHint =
       count > 0
@@ -175,18 +183,22 @@ export class OpenAICompatibleProvider implements AIProvider {
 
     let lastError: unknown = null;
     for (const attempt of attempts) {
+      if (options.signal?.aborted) throw new DOMException("已取消", "AbortError");
       try {
         const raw = await this.chatRaw(
           [
             { role: "system", content: attempt.system },
             { role: "user", content: attempt.user }
           ],
-          attempt.maxTokens
+          attempt.maxTokens,
+          options.signal
         );
         const cards = attempt.expectJson ? parseCardsLoose(raw) : parseDelimitedCards(raw);
         if (cards.length > 0) return cards;
         lastError = new Error("AI 未返回可用卡片");
       } catch (e) {
+        // 取消不是失败：直接抛出，由上层保留已生成结果
+        if (e instanceof DOMException && e.name === "AbortError") throw e;
         lastError = e;
       }
     }
