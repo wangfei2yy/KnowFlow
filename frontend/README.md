@@ -55,6 +55,6 @@ uvicorn app.main:app --reload --port 8022   # 或直接 python run.py（默认 8
 
 ## 详细文档
 
-- 开发规格书：`docs/plans/KnowFlow开发技术文档.md`
+- 开发规格书：`docs/KnowFlow开发技术文档.md`
 - 四大模块开发文档：`docs/plans/模块一~四_*.md`
 - 环境依赖：`docs/开发依赖文档.md`
