@@ -18,3 +18,21 @@ export const router = createRouter({
   history: createWebHashHistory(),
   routes
 });
+
+/**
+ * 弱网下懒加载 chunk 失败时，旧代码会停在空白页。
+ * 这里自动重载一次（用 sessionStorage 防死循环），仍失败则提示。
+ */
+router.onError((error) => {
+  const message = String(error?.message ?? error);
+  const isChunkError = /Loading chunk|Failed to fetch dynamically imported module|Importing a module script failed/i.test(message);
+  if (!isChunkError) return;
+  const KEY = "knowflow.chunkRetry";
+  if (sessionStorage.getItem(KEY)) {
+    sessionStorage.removeItem(KEY);
+    console.error("[KnowFlow] 页面资源加载失败：", message);
+    return;
+  }
+  sessionStorage.setItem(KEY, "1");
+  location.reload();
+});

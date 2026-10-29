@@ -5,6 +5,7 @@ import Toast from "@/components/Toast.vue";
 import CompanionWidget from "@/components/CompanionWidget.vue";
 import GlobalSearch from "@/components/GlobalSearch.vue";
 import BottomNav from "@/components/BottomNav.vue";
+import ErrorBoundary from "@/components/ErrorBoundary.vue";
 import { useDocumentStore } from "@/stores/documentStore";
 import { useAppStore } from "@/stores/appStore";
 import { Menu, Search } from "lucide-vue-next";
@@ -49,7 +50,9 @@ function openSearch() {
       </header>
 
       <main id="main" class="flex-1 pb-16 lg:pb-0">
-        <router-view />
+        <ErrorBoundary>
+          <router-view />
+        </ErrorBoundary>
       </main>
     </div>
 
