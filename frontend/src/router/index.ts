@@ -81,6 +81,17 @@ export const router = createRouter({
 });
 
 /**
+ * 旧链接兼容：/study?mode=review 与 /study?card=xxx 是上一版卡片复习的地址。
+ * 放在路由守卫里而不是组件内——只有 query 变化时组件不会重新挂载，onMounted 抓不到。
+ */
+router.beforeEach((to) => {
+  if (to.path === "/study" && (to.query.mode || to.query.card)) {
+    return { path: "/study/cards", query: to.query };
+  }
+  return true;
+});
+
+/**
  * 弱网下懒加载 chunk 失败时，旧代码会停在空白页。
  * 这里自动重载一次（用 sessionStorage 防死循环），仍失败则提示。
  */

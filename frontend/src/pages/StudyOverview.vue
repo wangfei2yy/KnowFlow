@@ -3,7 +3,7 @@
  * 学习概览：把「今天该学什么」收敛到一屏——待复习、卡片进度、语法与闯关入口。
  */
 import { computed, onMounted, ref } from "vue";
-import { useRouter, useRoute } from "vue-router";
+import { useRouter } from "vue-router";
 import {
   GraduationCap,
   Layers,
@@ -23,7 +23,6 @@ import { IS_MINITOOL } from "@/utils/runtime";
 import type { Flashcard } from "@/db/database";
 
 const router = useRouter();
-const route = useRoute();
 const reviewStore = useReviewStore();
 const docStore = useDocumentStore();
 
@@ -34,12 +33,6 @@ const questPlays = ref(0);
 const loading = ref(true);
 
 onMounted(async () => {
-  // 旧链接兼容：/study?mode=review 与 /study?card=xxx 是上一版卡片复习的地址
-  if (route.query.mode || route.query.card) {
-    await router.replace({ path: "/study/cards", query: route.query });
-    return;
-  }
-
   await docStore.loadAll(false);
   void reviewStore.refresh();
   cards.value = await listFlashcards();
