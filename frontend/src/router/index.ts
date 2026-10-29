@@ -1,9 +1,12 @@
 import { createRouter, createWebHashHistory } from "vue-router";
 import type { RouteLocation } from "vue-router";
 import { IS_MINITOOL } from "@/utils/runtime";
+// 首屏必定要用，静态引入：否则要多等一次「主包下载完 → 再请求首页 chunk」，
+// 部署环境单次请求 TTFB 约 0.5s，这一跳省下来比多 3KB 体积值
+import HomePage from "@/pages/HomePage.vue";
 
 const routes = [
-  { path: "/", name: "home", component: () => import("@/pages/HomePage.vue"), meta: { title: "首页" } },
+  { path: "/", name: "home", component: HomePage, meta: { title: "首页" } },
   { path: "/library", name: "library", component: () => import("@/pages/LibraryPage.vue"), meta: { title: "资料库" } },
   { path: "/library/:id", name: "detail", component: () => import("@/pages/DocumentDetailPage.vue"), meta: { title: "资料详情" } },
   { path: "/editor", name: "editor", component: () => import("@/pages/EditorPage.vue"), meta: { title: "新增资料" } },
