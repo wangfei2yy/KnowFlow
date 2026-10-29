@@ -155,6 +155,26 @@ function dedupe(words) {
   return out;
 }
 
+/**
+ * 入库的词库源表（frontend/data/words/<id>.psv）。
+ *
+ * 为什么要这张表：原始 PDF 在仓库根的 data/ 下、因版权不入库，
+ * 换一台机器就只剩产物 JSON，没法重建。源表入库后，改词条也不用碰 PDF。
+ * 格式：单词|音标|释义，# 开头为注释。
+ */
+function readWordTable(id) {
+  const file = path.join(process.cwd(), "data", "words", `${id}.psv`);
+  if (!fs.existsSync(file)) return null;
+  const out = [];
+  for (const line of fs.readFileSync(file, "utf8").split(/\r?\n/)) {
+    if (!line.trim() || line.startsWith("#")) continue;
+    const [w, phonetic, meaning] = line.split("|");
+    if (!w || !meaning) continue;
+    out.push({ w: w.trim(), p: (phonetic ?? "").trim(), m: meaning.trim() });
+  }
+  return out.length ? out : null;
+}
+
 async function main() {
   fs.mkdirSync(OUT, { recursive: true });
 
@@ -164,8 +184,10 @@ async function main() {
     ["cet4", "大学英语四级词汇-乱序版-答案.pdf", "四级词汇"],
     ["cet6", "大学英语六级词汇-乱序版-答案.pdf", "六级词汇"]
   ]) {
-    const raw = await parsePdfWords(path.join(SRC, "单词", file));
-    const words = dedupe(raw);
+    // 有入库源表就用源表；没有才回落到 PDF 解析（PDF 不入库，新机器上拿不到）
+    const table = readWordTable(id);
+    const raw = table ?? (await parsePdfWords(path.join(SRC, "单词", file)));
+    const words = table ?? dedupe(raw);
     const target = path.join(OUT, `${id}.json`);
     fs.writeFileSync(target, JSON.stringify(words));
     packs.push({
@@ -176,7 +198,10 @@ async function main() {
       bytes: fs.statSync(target).size,
       file: `${id}.json`
     });
-    console.log(`${id}: 解析 ${raw.length} 条 → 可用 ${words.length} 词，${(fs.statSync(target).size / 1024).toFixed(0)} KB`);
+    console.log(
+      `${id}: ${table ? "源表" : "PDF"} ${raw.length} 条 → 可用 ${words.length} 词，` +
+        `${(fs.statSync(target).size / 1024).toFixed(0)} KB`
+    );
   }
 
   const topics = parseGrammar();

@@ -27,7 +27,8 @@
     "test:food:logic": "node scripts/run-food-logic.mjs",
     "test:idiom-game": "node scripts/run-idiom-game.mjs",
     "test:pair-game": "node scripts/run-pair.mjs",
-    "test:runner": "node scripts/run-runner.mjs"
+    "test:runner": "node scripts/run-runner.mjs",
+    "table:words": "node scripts/export-word-table.mjs cet4"
   },
   "dependencies": {
     "dexie": "^4.0.8",
