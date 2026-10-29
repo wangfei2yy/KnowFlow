@@ -11,7 +11,7 @@ import { useAppStore } from "@/stores/appStore";
 import { useReviewStore } from "@/stores/reviewStore";
 import { loadPackIndex, loadWords, type PackMeta } from "@/services/knowledgePack";
 import { addWordToReview } from "@/services/quest/wordCards";
-import { loadPlayPack, savePlayPack, saveGameResult } from "@/services/gameService";
+import { loadPlayPack, savePlayPack, saveGameResult, loadUntimed, saveUntimed } from "@/services/gameService";
 import {
   createPairGame,
   flipCard,
@@ -39,13 +39,17 @@ const packId = ref((route.query.pack as string) || loadPlayPack());
 const game = ref<PairGameState | null>(null);
 const result = ref<PairGameState | null>(null);
 const banked = ref(0);
+/** 练习模式：不限时 */
+const untimed = ref(loadUntimed());
 
 let raf = 0;
 let lastTs = 0;
 
 const wordPacks = computed(() => packs.value.filter((p) => p.kind === "words" && p.id !== "idiom"));
 const packTitle = computed(() => packs.value.find((p) => p.id === packId.value)?.title ?? "");
-const timeLeft = computed(() => Math.ceil((game.value?.duration ?? PAIR_GAME.duration) - (game.value?.elapsed ?? 0)));
+const timeLeft = computed(() =>
+  untimed.value ? 0 : Math.ceil((game.value?.duration ?? PAIR_GAME.duration) - (game.value?.elapsed ?? 0))
+);
 const matched = computed(() => game.value?.matchedPairs ?? 0);
 const totalPairs = computed(() => game.value?.totalPairs ?? PAIR_GAME.pairs);
 const stars = computed(() => (result.value ? pairStars(result.value) : 0));
@@ -80,7 +84,7 @@ async function prepare() {
   loading.value = true;
   try {
     const words = await loadWords(packId.value);
-    game.value = createPairGame({ words });
+    game.value = createPairGame({ words, untimed: untimed.value });
     phase.value = "ready";
     result.value = null;
     banked.value = 0;
@@ -156,6 +160,13 @@ function goHome() {
   router.push("/study/play");
 }
 
+function setUntimed(value: boolean) {
+  if (untimed.value === value) return;
+  untimed.value = value;
+  saveUntimed(value);
+  void prepare();
+}
+
 function switchPack(id: string) {
   if (id === packId.value || loading.value) return;
   packId.value = id;
@@ -207,9 +218,27 @@ function cardVisible(cardIndex: number): boolean {
         </button>
       </div>
 
-      <div class="mt-5 text-center">
+      <div class="mt-4 text-center">
+        <div class="inline-flex rounded-full bg-slate-100 p-0.5 text-xs">
+          <button
+            class="rounded-full px-3 py-1 transition"
+            :class="!untimed ? 'bg-white font-medium text-slate-800 shadow-sm' : 'text-slate-500'"
+            @click="setUntimed(false)"
+          >
+            限时 90 秒
+          </button>
+          <button
+            class="rounded-full px-3 py-1 transition"
+            :class="untimed ? 'bg-white font-medium text-slate-800 shadow-sm' : 'text-slate-500'"
+            @click="setUntimed(true)"
+          >
+            练习 · 不限时
+          </button>
+        </div>
+      </div>
+      <div class="mt-3 text-center">
         <button class="btn-primary" :disabled="loading || !game" @click="start">
-          <Play :size="15" /> 开始（90 秒）
+          <Play :size="15" /> 开始
         </button>
         <p v-if="!game && !loading" class="mt-2 text-[11px] text-slate-400">先选一个词库</p>
         <p v-if="loading" class="mt-2 text-[11px] text-slate-400">词库加载中…</p>
@@ -220,7 +249,7 @@ function cardVisible(cardIndex: number): boolean {
     <div v-else-if="phase === 'playing' && game" class="space-y-3">
       <div class="flex items-center justify-between text-sm">
         <span class="flex items-center gap-1 rounded-lg bg-slate-900/80 px-2.5 py-1 font-semibold tabular-nums text-white">
-          <Clock :size="12" /> {{ Math.max(0, timeLeft) }}s
+          <Clock :size="12" /> {{ untimed ? "练习" : Math.max(0, timeLeft) + "s" }}
         </span>
         <span class="text-xs text-slate-500">已配对 {{ matched }} / {{ totalPairs }}</span>
         <span class="font-semibold tabular-nums text-slate-700">{{ game.score }} 分</span>

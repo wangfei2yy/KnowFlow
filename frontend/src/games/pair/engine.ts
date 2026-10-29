@@ -68,6 +68,8 @@ export interface PairConfig {
   words: WordEntry[];
   pairs?: number;
   duration?: number;
+  /** 练习模式：不限时 */
+  untimed?: boolean;
   seed?: number;
 }
 
@@ -105,7 +107,7 @@ export function createPairGame(config: PairConfig, seedOverride?: number): PairG
     combo: 0,
     bestCombo: 0,
     elapsed: 0,
-    duration: config.duration ?? PAIR_GAME.duration,
+    duration: config.untimed ? Number.POSITIVE_INFINITY : (config.duration ?? PAIR_GAME.duration),
     flipBackAt: 0,
     lastMatch: null,
     matchSeq: 0,

@@ -103,6 +103,8 @@ export interface OrbState {
 export interface OrbConfig {
   words: WordEntry[];
   duration?: number;
+  /** 练习模式：不限时（duration 视为无限） */
+  untimed?: boolean;
   lives?: number;
   /** 指定随机种子，便于复现 */
   seed?: number;
@@ -268,7 +270,7 @@ function topUpFoods(state: OrbState): void {
 
 export function createOrbGame(config: OrbConfig): OrbState {
   const usable = config.words.filter((w) => w.w && w.m);
-  const duration = config.duration ?? ORB.duration;
+  const duration = config.untimed ? Number.POSITIVE_INFINITY : (config.duration ?? ORB.duration);
   const lives = config.lives ?? ORB.lives;
 
   const state: OrbState = {

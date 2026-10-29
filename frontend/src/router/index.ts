@@ -79,6 +79,12 @@ const routes = [
               name: "study-play-pair",
               component: () => import("@/pages/PairPage.vue"),
               meta: { title: "中英配对" }
+            },
+            {
+              path: "play/runner",
+              name: "study-play-runner",
+              component: () => import("@/pages/RunnerPage.vue"),
+              meta: { title: "单词跑酷" }
             }
           ])
     ]

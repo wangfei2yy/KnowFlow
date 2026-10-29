@@ -24,6 +24,7 @@ import {
   CircleDot,
   Languages,
   Shuffle,
+  Footprints,
   Trophy,
   ChevronRight,
   Lock
@@ -73,6 +74,14 @@ const games: GameCard[] = [
     icon: Shuffle,
     path: "/study/play/pair",
     accent: "bg-sky-50 text-sky-600"
+  },
+  {
+    id: "runner",
+    title: "单词跑酷",
+    desc: "三条跑道，换道穿过写对的那扇门",
+    icon: Footprints,
+    path: "/study/play/runner",
+    accent: "bg-violet-50 text-violet-600"
   }
 ];
 
@@ -124,6 +133,10 @@ function scoreText(g: GameCard): string {
   }
   if (g.id === "pair") {
     const s = gameScoreOf(gameProgress.value, "pair", packId.value);
+    return s.plays > 0 ? `最高 ${s.bestScore} 分 · ${s.plays} 局` : "还没玩过";
+  }
+  if (g.id === "runner") {
+    const s = gameScoreOf(gameProgress.value, "runner", packId.value);
     return s.plays > 0 ? `最高 ${s.bestScore} 分 · ${s.plays} 局` : "还没玩过";
   }
   return "即将上线";

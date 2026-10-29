@@ -178,6 +178,27 @@ export function clearStudyPosition(): void {
   removeKey(POSITION_KEY);
 }
 
+// ---------------- 不限时（练习模式）偏好 ----------------
+
+const UNTIMED_KEY = "knowflow.play.untimed";
+
+/** 练习模式：不限时。默认关闭（限时才有紧迫感） */
+export function loadUntimed(): boolean {
+  try {
+    return localStorage.getItem(UNTIMED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function saveUntimed(value: boolean): void {
+  try {
+    localStorage.setItem(UNTIMED_KEY, value ? "1" : "0");
+  } catch {
+    /* 忽略 */
+  }
+}
+
 // ---------------- 游戏成绩 ----------------
 
 export function loadGameProgress(): GameProgress {

@@ -11,7 +11,7 @@ import { useAppStore } from "@/stores/appStore";
 import { useReviewStore } from "@/stores/reviewStore";
 import { loadIdioms, type IdiomEntry } from "@/services/knowledgePack";
 import { addWordToReview } from "@/services/quest/wordCards";
-import { saveGameResult } from "@/services/gameService";
+import { saveGameResult, loadUntimed, saveUntimed } from "@/services/gameService";
 import {
   answerBlank,
   createIdiomGame,
@@ -35,6 +35,8 @@ type Phase = "ready" | "playing" | "over";
 const phase = ref<Phase>("ready");
 const loading = ref(true);
 const allIdioms = ref<IdiomEntry[]>([]);
+/** 练习模式：不限时 */
+const untimed = ref(loadUntimed());
 const game = ref<IdiomGameState | null>(null);
 const result = ref<IdiomGameState | null>(null);
 const picked = ref("");
@@ -47,7 +49,9 @@ let advanceTimer = 0;
 
 const q = computed(() => game.value?.question ?? null);
 const parts = computed(() => (q.value ? splitBlank(q.value) : { before: "", after: "" }));
-const timeLeft = computed(() => Math.ceil((game.value?.duration ?? IDIOM_GAME.duration) - (game.value?.elapsed ?? 0)));
+const timeLeft = computed(() =>
+  untimed.value ? 0 : Math.ceil((game.value?.duration ?? IDIOM_GAME.duration) - (game.value?.elapsed ?? 0))
+);
 const accuracy = computed(() => (result.value ? Math.round(idiomAccuracy(result.value) * 100) : 0));
 
 onMounted(async () => {
@@ -58,7 +62,7 @@ onMounted(async () => {
   }
   try {
     allIdioms.value = await loadIdioms();
-    game.value = createIdiomGame({ idioms: allIdioms.value });
+    game.value = createIdiomGame({ idioms: allIdioms.value, untimed: untimed.value });
   } catch (e) {
     appStore.showToast(e instanceof Error ? e.message : "成语库加载失败", "error");
   } finally {
@@ -140,8 +144,15 @@ function replay() {
   banked.value = 0;
   picked.value = "";
   revealed.value = false;
-  game.value = createIdiomGame({ idioms: allIdioms.value });
+  game.value = createIdiomGame({ idioms: allIdioms.value, untimed: untimed.value });
   start();
+}
+
+function setUntimed(value: boolean) {
+  if (untimed.value === value) return;
+  untimed.value = value;
+  saveUntimed(value);
+  if (allIdioms.value.length) game.value = createIdiomGame({ idioms: allIdioms.value, untimed: value });
 }
 
 function goHome() {
@@ -173,9 +184,27 @@ function goHome() {
       <p class="mx-auto mt-1 max-w-sm text-xs leading-relaxed text-slate-500">
         每个成语挖掉一个字，从四个候选里选回来。答错扣一条命，答错的成语会自动进入复习队列。
       </p>
-      <button class="btn-primary mt-4" :disabled="!game" @click="start">
-        <Play :size="15" /> 开始（60 秒）
-      </button>
+      <div class="mt-4 inline-flex rounded-full bg-slate-100 p-0.5 text-xs">
+        <button
+          class="rounded-full px-3 py-1 transition"
+          :class="!untimed ? 'bg-white font-medium text-slate-800 shadow-sm' : 'text-slate-500'"
+          @click="setUntimed(false)"
+        >
+          限时 60 秒
+        </button>
+        <button
+          class="rounded-full px-3 py-1 transition"
+          :class="untimed ? 'bg-white font-medium text-slate-800 shadow-sm' : 'text-slate-500'"
+          @click="setUntimed(true)"
+        >
+          练习 · 不限时
+        </button>
+      </div>
+      <div>
+        <button class="btn-primary mt-2" :disabled="!game" @click="start">
+          <Play :size="15" /> 开始
+        </button>
+      </div>
     </div>
 
     <!-- 游戏中 -->
@@ -183,7 +212,7 @@ function goHome() {
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-3 text-sm">
           <span class="rounded-lg bg-slate-900/80 px-2.5 py-1 font-semibold tabular-nums text-white">
-            {{ Math.max(0, timeLeft) }}s
+            {{ untimed ? "练习" : Math.max(0, timeLeft) + "s" }}
           </span>
           <span class="flex items-center gap-1 text-rose-500">
             <Heart

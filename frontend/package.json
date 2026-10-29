@@ -1,7 +1,7 @@
 {
   "name": "knowflow",
   "private": true,
-  "version": "1.2.0",
+  "version": "1.3.0",
   "type": "module",
   "scripts": {
     "dev": "vite --config vite.config.ts",
@@ -26,7 +26,8 @@
     "test:food": "node scripts/smoke-food.mjs && node scripts/run-food-logic.mjs",
     "test:food:logic": "node scripts/run-food-logic.mjs",
     "test:idiom-game": "node scripts/run-idiom-game.mjs",
-    "test:pair-game": "node scripts/run-pair.mjs"
+    "test:pair-game": "node scripts/run-pair.mjs",
+    "test:runner": "node scripts/run-runner.mjs"
   },
   "dependencies": {
     "dexie": "^4.0.8",

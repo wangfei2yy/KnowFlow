@@ -15,7 +15,7 @@ import { useAppStore } from "@/stores/appStore";
 import { useReviewStore } from "@/stores/reviewStore";
 import { loadPackIndex, loadWords, type PackMeta } from "@/services/knowledgePack";
 import { addWordToReview } from "@/services/quest/wordCards";
-import { saveGameResult, loadPlayPack, savePlayPack } from "@/services/gameService";
+import { saveGameResult, loadPlayPack, savePlayPack, loadUntimed, saveUntimed } from "@/services/gameService";
 import {
   createOrbGame,
   startOrb,
@@ -57,6 +57,8 @@ const canvasEl = ref<HTMLCanvasElement | null>(null);
 const stageEl = ref<HTMLElement | null>(null);
 
 const result = shallowRef<OrbState | null>(null);
+/** 练习模式：不限时 */
+const untimed = ref(loadUntimed());
 const banked = ref(0);
 const banner = ref("");
 const joystick = ref<JoystickState>({ active: false, x: 0, y: 0, dx: 0, dy: 0 });
@@ -138,7 +140,7 @@ async function prepare(id: string) {
     const words = await loadWords(id);
     packId.value = id;
     savePlayPack(id);
-    const g = createOrbGame({ words });
+    const g = createOrbGame({ words, untimed: untimed.value });
     if (!g.target || g.foods.length === 0) {
       appStore.showToast("这个词库的词太少，换个词库试试", "error");
       return;
@@ -225,7 +227,7 @@ function loop(ts: number) {
 function syncHud(force = false) {
   if (!game) return;
   const next = {
-    time: Math.ceil(Math.max(0, game.duration - game.elapsed)),
+    time: Number.isFinite(game.duration) ? Math.ceil(Math.max(0, game.duration - game.elapsed)) : 0,
     score: game.score,
     lives: game.lives,
     maxLives: game.maxLives,
@@ -276,6 +278,14 @@ async function settle() {
 
 function replay() {
   void startWith(packId.value);
+}
+
+/** 切换练习模式：重建一局，避免半局中途改规则 */
+function setUntimed(value: boolean) {
+  if (untimed.value === value) return;
+  untimed.value = value;
+  saveUntimed(value);
+  if (game && !result.value) void prepare(packId.value);
 }
 
 function changePack() {
@@ -351,7 +361,7 @@ const bestTierName = computed(() => (result.value ? tierName(result.value.tier) 
       <!-- 顶部 HUD -->
       <div class="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between p-3">
         <div class="rounded-lg bg-slate-900/70 px-2.5 py-1 text-sm font-semibold tabular-nums text-white">
-          {{ timeText(hud.time) }}
+          {{ untimed ? "练习" : timeText(hud.time) }}
         </div>
         <div class="flex items-center gap-2">
           <span class="flex items-center gap-1 rounded-lg bg-white/85 px-2 py-1 text-rose-500">
@@ -415,7 +425,23 @@ const bestTierName = computed(() => (result.value ? tierName(result.value.tier) 
         <p class="max-w-xs text-xs leading-relaxed text-slate-500">
           球上写着中文意思，场上只有一个球的英文是对的。吃对它，球就变大；吃错了掉一条命。
         </p>
-        <button class="btn-primary mt-1" @click="play"><Play :size="15" /> 开始（60 秒）</button>
+        <div class="mt-1 inline-flex rounded-full bg-slate-100 p-0.5 text-xs">
+          <button
+            class="rounded-full px-3 py-1 transition"
+            :class="!untimed ? 'bg-white font-medium text-slate-800 shadow-sm' : 'text-slate-500'"
+            @click="setUntimed(false)"
+          >
+            限时 60 秒
+          </button>
+          <button
+            class="rounded-full px-3 py-1 transition"
+            :class="untimed ? 'bg-white font-medium text-slate-800 shadow-sm' : 'text-slate-500'"
+            @click="setUntimed(true)"
+          >
+            练习 · 不限时
+          </button>
+        </div>
+        <button class="btn-primary mt-2" @click="play"><Play :size="15" /> 开始</button>
         <span class="text-[11px] text-slate-400">电脑：鼠标或 WASD 移动 · 手机：按住屏幕拖动</span>
       </div>
 

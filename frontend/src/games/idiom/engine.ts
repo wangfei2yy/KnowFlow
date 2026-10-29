@@ -72,6 +72,8 @@ export interface IdiomGameState {
 export interface IdiomConfig {
   idioms: IdiomEntry[];
   duration?: number;
+  /** 练习模式：不限时 */
+  untimed?: boolean;
   lives?: number;
   seed?: number;
 }
@@ -154,7 +156,7 @@ export function createIdiomGame(config: IdiomConfig, seedOverride?: number): Idi
     lives: config.lives ?? IDIOM_GAME.lives,
     maxLives: config.lives ?? IDIOM_GAME.lives,
     elapsed: 0,
-    duration: config.duration ?? IDIOM_GAME.duration,
+    duration: config.untimed ? Number.POSITIVE_INFINITY : (config.duration ?? IDIOM_GAME.duration),
     wrongWords: [],
     lastHit: null,
     hitSeq: 0,
