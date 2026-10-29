@@ -14,11 +14,23 @@ import {
   ChevronDown,
   AlertCircle,
   Copy,
-  CheckCheck
+  CheckCheck,
+  Lock,
+  LockOpen,
+  Repeat
 } from "lucide-vue-next";
 import { loadRecipes, loadIngredients, type IngredientEntry, type MealKey, type RecipeEntry } from "@/services/knowledgePack";
 import { CATEGORY_LABEL, categorizeIngredients } from "@/services/foodPack";
-import { groupShopping, loadChecked, saveChecked, shoppingText } from "@/services/kitchenService";
+import {
+  groupShopping,
+  loadChecked,
+  loadLocks,
+  saveChecked,
+  saveLocks,
+  shoppingText,
+  slotKeyOf,
+  type LockMap
+} from "@/services/kitchenService";
 import { useTaskStore } from "@/stores/taskStore";
 import { useAppStore } from "@/stores/appStore";
 
@@ -49,6 +61,8 @@ const ingredients = ref<IngredientEntry[]>([]);
 
 /** 购物清单勾选（按周隔离：换周自动清空，不会把上週的勾带过来） */
 const checked = ref<Set<string>>(loadChecked());
+/** 锁定的格子：`天数:餐次` → 菜 id；换周自动失效 */
+const locks = ref<LockMap>(loadLocks());
 const shoppingGroups = computed(() => groupShopping(shopping.value, ingredients.value, checked.value));
 const checkedCount = computed(() => shoppingGroups.value.reduce((n, g) => n + g.items.filter((i) => i.checked).length, 0));
 
@@ -200,6 +214,54 @@ const noMaterialCount = computed(
 );
 
 /** 今天的三餐加进任务清单，照着做就行 */
+/** 单餐换一道：只动这一格，别的菜不动 */
+function swapMeal(dayIndex: number, mealKey: MealKey) {
+  const day = plan.value[dayIndex];
+  const slot = day?.meals.find((m) => m.key === mealKey);
+  if (!slot) return;
+
+  // 换菜即视为放弃锁定，否则换了又被锁回去，等于没换
+  const key = slotKeyOf(dayIndex, mealKey);
+  if (locks.value[key]) {
+    const next = { ...locks.value };
+    delete next[key];
+    locks.value = next;
+    saveLocks(next);
+  }
+
+  const pool = recipes.value.filter((r) => r.meal === mealKey);
+  if (pool.length <= 1) {
+    appStore.showToast("这个餐次只有一道菜，换不了", "info");
+    return;
+  }
+  // 排除本格现有的 + 相邻两天同餐次的，避免换完还是重复
+  const banned = new Set<string>([slot.recipe.id]);
+  for (const d of [plan.value[dayIndex - 1], plan.value[dayIndex + 1]]) {
+    const sib = d?.meals.find((m) => m.key === mealKey);
+    if (sib) banned.add(sib.recipe.id);
+  }
+  const candidates = pool.filter((r) => !banned.has(r.id));
+  const list = candidates.length ? candidates : pool;
+  slot.recipe = list[Math.floor(Math.random() * list.length)];
+}
+
+/** 锁定 / 解锁某一格 */
+function toggleLock(dayIndex: number, mealKey: MealKey) {
+  const slot = plan.value[dayIndex]?.meals.find((m) => m.key === mealKey);
+  if (!slot) return;
+  const key = slotKeyOf(dayIndex, mealKey);
+  const next = { ...locks.value };
+  if (next[key]) {
+    delete next[key];
+    appStore.showToast("已解锁", "info");
+  } else {
+    next[key] = slot.recipe.id;
+    appStore.showToast("已锁定，点「换一换」时这道菜不动", "success");
+  }
+  locks.value = next;
+  saveLocks(next);
+}
+
 async function addTodayToTasks() {
   const today = plan.value[0];
   if (!today) return;
@@ -303,9 +365,31 @@ async function addTodayToTasks() {
           </div>
           <span class="w-28 shrink-0 text-[11px] text-slate-400">{{ day.label }}</span>
           <div class="flex flex-1 flex-wrap gap-x-4 gap-y-1">
-            <span v-for="m in day.meals" :key="m.key" class="text-xs text-slate-600">
-              <span class="mr-1 text-xs text-slate-400">{{ MEAL_LABEL[m.key] }}</span>
+            <span
+              v-for="m in day.meals"
+              :key="m.key"
+              class="group inline-flex items-center gap-1 text-xs text-slate-600"
+            >
+              <span class="text-xs text-slate-400">{{ MEAL_LABEL[m.key] }}</span>
               {{ m.recipe.name }}
+              <button
+                class="rounded p-0.5 text-slate-300 transition hover:bg-slate-100 hover:text-slate-600"
+                :title="`换一道${MEAL_LABEL[m.key]}餐`"
+                :aria-label="`换一道${MEAL_LABEL[m.key]}餐`"
+                @click="swapMeal(i, m.key)"
+              >
+                <Repeat :size="12" />
+              </button>
+              <button
+                class="rounded p-0.5 transition hover:bg-slate-100"
+                :class="locks[slotKeyOf(i, m.key)] ? 'text-brand-600' : 'text-slate-300 hover:text-slate-600'"
+                :title="locks[slotKeyOf(i, m.key)] ? '已锁定，点一下解锁' : '锁定这道菜（换一换时不动）'"
+                :aria-label="locks[slotKeyOf(i, m.key)] ? '解锁' : '锁定'"
+                @click="toggleLock(i, m.key)"
+              >
+                <Lock v-if="locks[slotKeyOf(i, m.key)]" :size="12" />
+                <LockOpen v-else :size="12" />
+              </button>
             </span>
           </div>
         </div>

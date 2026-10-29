@@ -170,6 +170,43 @@ function attachSeasons(rows) {
   return matched;
 }
 
+/**
+ * 从 data/food/season-months.psv 读「哪几个月当季」，只给对得上的食材写 months。
+ *
+ * 时令表 PDF 是南方叫法（释迦、莲雾、鹤首瓜…），图鉴里没有的名字就不写 ——
+ * 页面上会显示「未收录月份」，比编一个月份诚实。
+ */
+function attachMonths(rows) {
+  const file = path.join(process.cwd(), "data", "food", "season-months.psv");
+  if (!fs.existsSync(file)) {
+    console.warn("⚠️  没有 season-months.psv，跳过月份标注");
+    return 0;
+  }
+  const table = new Map();
+  for (const line of fs.readFileSync(file, "utf8").split(/\r?\n/)) {
+    if (!line.trim() || line.startsWith("#")) continue;
+    const [name, list] = line.split("|");
+    if (!name || !list) continue;
+    const months = list
+      .split(/[,，]/)
+      .map((x) => Number(x.trim()))
+      .filter((n) => n >= 1 && n <= 12);
+    if (months.length) table.set(norm(name), months.sort((a, b) => a - b));
+  }
+  let matched = 0;
+  for (const row of rows) {
+    for (const key of [row.name, ...(row.alias ?? [])].map(norm)) {
+      const months = table.get(key);
+      if (months) {
+        row.months = months;
+        matched += 1;
+        break;
+      }
+    }
+  }
+  return matched;
+}
+
 function writeIndex(count, bytes) {
   const index = JSON.parse(fs.readFileSync(INDEX, "utf8"));
   index.packs = (index.packs ?? []).filter((p) => p.id !== "ingredients");
@@ -193,6 +230,7 @@ if (!rows.length) {
 }
 
 const matched = attachSeasons(rows);
+const monthMatched = attachMonths(rows);
 
 // 按分类 + 名称排序，页面直接按数组顺序渲染即可
 const CAT_ORDER = ["vegetable", "mushroom", "fruit", "bean", "grain", "meat", "egg", "seafood", "dairy", "nut"];
@@ -208,7 +246,7 @@ fs.writeFileSync(OUT, json + "\n", "utf8");
 writeIndex(rows.length, Buffer.byteLength(json + "\n"));
 
 const byCat = rows.reduce((acc, r) => ((acc[r.category] = (acc[r.category] ?? 0) + 1), acc), {});
-console.log(`食材图鉴：${rows.length} 条，${matched} 条带季节`);
+console.log(`食材图鉴：${rows.length} 条，${matched} 条带季节，${monthMatched} 条带月份`);
 console.log("分类分布：", byCat);
 console.log(`产物：${path.relative(process.cwd(), OUT)}（${(json.length / 1024).toFixed(1)} KB）`);
 

@@ -44,6 +44,7 @@ const inReview = ref(false);
 const adding = ref(false);
 
 const season = seasonOf();
+const thisMonth = new Date().getMonth() + 1;
 
 const filtered = computed(() =>
   sortIngredients(
@@ -249,6 +250,21 @@ function gotoRecipe(id: string) {
               </span>
             </div>
           </div>
+        </div>
+
+        <div class="mt-3 flex flex-wrap items-center gap-1.5 text-[11px]">
+          <span class="text-slate-400">当季</span>
+          <template v-if="active.months?.length">
+            <span
+              v-for="m in active.months"
+              :key="m"
+              class="rounded px-1.5 py-0.5"
+              :class="m === thisMonth ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700'"
+            >
+              {{ m }} 月
+            </span>
+          </template>
+          <span v-else class="text-slate-400">时令表未收录月份（按四季展示）</span>
         </div>
 
         <div class="mt-3 space-y-2.5 text-sm">

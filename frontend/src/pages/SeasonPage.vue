@@ -4,7 +4,13 @@
  */
 import { computed, onMounted, ref } from "vue";
 import { Sprout, Loader2 } from "lucide-vue-next";
-import { loadSeasons, type SeasonEntry } from "@/services/knowledgePack";
+import {
+  loadIngredients,
+  loadSeasons,
+  type IngredientEntry,
+  type SeasonEntry
+} from "@/services/knowledgePack";
+import { CATEGORY_LABEL, CATEGORY_ORDER } from "@/services/foodPack";
 
 const seasons = ref<SeasonEntry[]>([]);
 const loading = ref(true);
@@ -33,6 +39,40 @@ const ordered = computed(() => {
   const order = ["春", "夏", "秋", "冬"];
   return [...seasons.value].sort((a, b) => order.indexOf(a.season) - order.indexOf(b.season));
 });
+
+// ---------------- 按月（数据来自时令表 PDF 的「按月份排」一节）----------------
+
+const mode = ref<"season" | "month">("season");
+const ingredients = ref<IngredientEntry[]>([]);
+const month = ref(new Date().getMonth() + 1);
+
+onMounted(async () => {
+  try {
+    ingredients.value = await loadIngredients();
+  } catch {
+    // 图鉴加载失败不影响「按季」视图
+  }
+});
+
+/** 当月当季的食材（只算时令表里能对上图鉴的那 66 种） */
+const monthList = computed(() => ingredients.value.filter((i) => i.months?.includes(month.value)));
+
+const monthGroups = computed(() => {
+  const buckets = new Map<string, string[]>();
+  for (const it of monthList.value) {
+    const label = CATEGORY_LABEL[it.category] ?? "其他";
+    const list = buckets.get(label) ?? [];
+    list.push(it.name);
+    buckets.set(label, list);
+  }
+  const order = CATEGORY_ORDER.map((c) => CATEGORY_LABEL[c]);
+  return [...buckets.entries()]
+    .sort((a, b) => order.indexOf(a[0]) - order.indexOf(b[0]) || a[0].localeCompare(b[0], "zh"))
+    .map(([label, names]) => ({ label, names }));
+});
+
+/** 有多少种食材没被时令表收录月份 —— 说明口径，不要让人以为漏了 */
+const monthGap = computed(() => ingredients.value.filter((i) => !i.months?.length).length);
 </script>
 
 <template>
@@ -42,12 +82,71 @@ const ordered = computed(() => {
       <span class="font-medium text-brand-600">{{ current }}季</span>，优先看这一栏。
     </p>
 
-    <div v-if="loading" class="card flex items-center gap-2 p-6 text-sm text-slate-500">
+    <!-- 按季 / 按月 -->
+    <div class="mb-4 inline-flex rounded-full bg-slate-100 p-0.5 text-xs">
+      <button
+        class="rounded-full px-3 py-1 transition"
+        :class="mode === 'season' ? 'bg-white font-medium text-slate-800 shadow-sm' : 'text-slate-500'"
+        @click="mode = 'season'"
+      >
+        按季
+      </button>
+      <button
+        class="rounded-full px-3 py-1 transition"
+        :class="mode === 'month' ? 'bg-white font-medium text-slate-800 shadow-sm' : 'text-slate-500'"
+        @click="mode = 'month'"
+      >
+        按月
+      </button>
+    </div>
+
+    <!-- 按月：时令表里 1~12 月都有，比四季细一档 -->
+    <div v-if="mode === 'month'" class="card p-4">
+      <div class="flex flex-wrap items-center gap-1.5">
+        <span class="mr-1 text-xs text-slate-400">月份</span>
+        <button
+          v-for="m in 12"
+          :key="m"
+          class="rounded-full px-2 py-1 text-xs transition"
+          :class="month === m ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
+          @click="month = m"
+        >
+          {{ m }} 月
+        </button>
+      </div>
+
+      <div class="mt-3 space-y-3">
+        <div v-for="g in monthGroups" :key="g.label">
+          <div class="mb-1 text-xs font-medium text-slate-500">
+            {{ g.label }}
+            <span class="ml-1 font-normal text-slate-400">{{ g.names.length }} 种</span>
+          </div>
+          <div class="flex flex-wrap gap-1.5">
+            <span
+              v-for="n in g.names"
+              :key="n"
+              class="rounded-lg bg-emerald-50 px-2 py-1 text-xs text-emerald-700"
+            >
+              {{ n }}
+            </span>
+          </div>
+        </div>
+        <p v-if="!monthGroups.length" class="text-xs text-slate-400">这个月的食材还在加载…</p>
+      </div>
+
+      <p class="mt-3 text-[11px] leading-relaxed text-slate-400">
+        {{ month }} 月共 {{ monthList.length }} 种。月份来自《一年四季时令蔬菜水果表》，
+        只有能对上食材图鉴的名字才计入 —— 另有 {{ monthGap }} 种食材该表未收录月份，
+        在「按季」里仍按四季展示。
+      </p>
+    </div>
+
+    <div v-if="mode === 'season' && loading" class="card flex items-center gap-2 p-6 text-sm text-slate-500">
       <Loader2 :size="16" class="animate-spin" /> 正在加载时令表…
     </div>
-    <div v-else-if="error" class="card p-6 text-sm text-slate-500">{{ error }}</div>
+    <div v-else-if="mode === 'season' && error" class="card p-6 text-sm text-slate-500">{{ error }}</div>
 
-    <div v-else class="grid gap-3 sm:grid-cols-2">
+    <div v-else-if="mode === 'season'" class="grid gap-3 sm:grid-cols-2">
       <div
         v-for="s in ordered"
         :key="s.season"

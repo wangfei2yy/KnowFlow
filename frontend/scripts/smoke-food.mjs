@@ -81,6 +81,16 @@ console.log("5) 功效/宜忌无医疗宣称");
 const veggies = list.filter((e) => e.category === "vegetable" || e.category === "fruit");
 const withSeason = veggies.filter((e) => e.seasons.length > 0);
 ok(withSeason.length / veggies.length >= 0.6, `带季节的蔬果比例偏低：${withSeason.length}/${veggies.length}`);
+
+// 按月：月份来自时令表 PDF，只有能对上图鉴的才写，所以不要求全覆盖，但不能为空/越界
+const withMonths = list.filter((e) => Array.isArray(e.months) && e.months.length);
+ok(withMonths.length >= 40, `带月份的食材偏少：${withMonths.length}（应 ≥40）`);
+for (const e of withMonths) {
+  ok(e.months.every((m) => m >= 1 && m <= 12), `${e.name}：月份越界 ${e.months}`);
+  ok(new Set(e.months).size === e.months.length, `${e.name}：月份有重复`);
+}
+const monthRate = withMonths.length / veggies.length;
+console.log(`按月：${withMonths.length} 种带月份（占蔬果 ${(monthRate * 100).toFixed(0)}%）`);
 console.log(`6) 季节标注: ${withSeason.length}/${veggies.length} 蔬果`);
 
 // 7) 索引里有这条 pack

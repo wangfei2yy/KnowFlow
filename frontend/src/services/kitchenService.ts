@@ -170,3 +170,44 @@ export function saveChecked(set: Set<string>, week = weekKeyOf()): void {
     /* 存储不可用就当没勾，不影响当前页面 */
   }
 }
+
+// ---------------- 计划锁定（按周，换周即清） ----------------
+
+const LOCK_KEY = "knowflow.kitchen.locks";
+
+/**
+ * 锁定的粒度是「第几天 + 哪一餐」，不是「第几天的某一餐吃了什么菜」。
+ * 这样点「换一换」时锁住的那格不动，其余重抽；换周自动失效，不会把上週的锁带过来。
+ */
+export type LockMap = Record<string, string>;
+
+function readLocks(): Record<string, LockMap> {
+  try {
+    const raw = localStorage.getItem(LOCK_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, LockMap>) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function loadLocks(week = weekKeyOf()): LockMap {
+  return { ...(readLocks()[week] ?? {}) };
+}
+
+export function saveLocks(locks: LockMap, week = weekKeyOf()): void {
+  try {
+    const all = readLocks();
+    all[week] = locks;
+    const keys = Object.keys(all).sort();
+    while (keys.length > 2) {
+      const k = keys.shift()!;
+      delete all[k];
+    }
+    localStorage.setItem(LOCK_KEY, JSON.stringify(all));
+  } catch {
+    /* 存储不可用就不锁，不影响当前页面 */
+  }
+}
+
+export const slotKeyOf = (dayIndex: number, meal: string) => `${dayIndex}:${meal}`;

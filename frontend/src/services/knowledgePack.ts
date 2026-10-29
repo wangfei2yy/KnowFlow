@@ -74,6 +74,8 @@ export interface IngredientEntry {
   category: IngredientCategory;
   /** 当季季节；空数组表示四季常见 */
   seasons: string[];
+  /** 当季月份（1~12）；只有时令表里能对上的食材才有，缺省表示「未收录月份」 */
+  months?: number[];
   nutrition: {
     kcal: number;
     protein?: number;

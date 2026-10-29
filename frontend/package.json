@@ -1,7 +1,7 @@
 {
   "name": "knowflow",
   "private": true,
-  "version": "1.4.0",
+  "version": "1.5.0",
   "type": "module",
   "scripts": {
     "dev": "vite --config vite.config.ts",
@@ -31,7 +31,8 @@
     "table:words": "node scripts/export-word-table.mjs cet4",
     "build:food:materials": "node scripts/extract-materials.mjs",
     "test:idiom-page": "node scripts/run-idiom-page.mjs",
-    "test:kitchen": "node scripts/run-kitchen.mjs"
+    "test:kitchen": "node scripts/run-kitchen.mjs",
+    "build:food:seasons": "node scripts/extract-seasons.mjs"
   },
   "dependencies": {
     "dexie": "^4.0.8",

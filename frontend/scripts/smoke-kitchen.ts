@@ -6,9 +6,12 @@ import {
   commonMaterials,
   groupShopping,
   loadChecked,
+  loadLocks,
   saveChecked,
+  saveLocks,
   searchByPantry,
   shoppingText,
+  slotKeyOf,
   weekKeyOf
 } from "@/services/kitchenService";
 import type { IngredientEntry, RecipeEntry } from "@/services/knowledgePack";
@@ -123,4 +126,16 @@ saveChecked(new Set(["面条"]), "2026-11-09");
 ok(!loadChecked("2026-10-26").size, "超过两周的最旧一份应被清掉");
 console.log("8) 勾选按周隔离 OK");
 
-console.log("\n✅ 饮食逻辑 8 组断言全部通过");
+// ---------- 9) 计划锁定按周隔离 ----------
+store.delete("knowflow.kitchen.locks");
+const w1 = weekKeyOf(new Date(2026, 9, 26));
+const w2 = weekKeyOf(new Date(2026, 10, 2));
+saveLocks({ [slotKeyOf(0, "lunch")]: "r3" }, w1);
+ok(loadLocks(w1)[slotKeyOf(0, "lunch")] === "r3", "锁定应写入");
+ok(Object.keys(loadLocks(w2)).length === 0, "下一周不应继承上週的锁定");
+saveLocks({}, w1);
+ok(Object.keys(loadLocks(w1)).length === 0, "清空后应为空");
+ok(slotKeyOf(2, "dinner") === "2:dinner", "格子 key 格式");
+console.log("9) 计划锁定按周隔离 OK");
+
+console.log("\n✅ 饮食逻辑 9 组断言全部通过");
