@@ -190,8 +190,9 @@ ok(new Set(pool.foods.map((f) => f.word)).size === pool.foods.length, "干扰项
 
 // ---------------- 11) 展示辅助 ----------------
 const longWord: WordEntry = { w: "abandon", m: "放弃，抛弃；遗弃；沉溺" };
-ok(targetLabel(longWord) === "放弃", `短义应取首个义项，实际 ${targetLabel(longWord)}`);
-ok(targetLabel(longWord, 2) === "放弃", "限制 2 字时收紧到 2 字");
+ok(targetLabel(longWord) === "放弃，抛弃", `短义应保留第一个义项（含逗号），实际 ${targetLabel(longWord)}`);
+ok(targetLabel(longWord, 2) === "放弃…", `限制 2 字时应截断并省略，实际 ${targetLabel(longWord, 2)}`);
+ok(targetLabel({ w: "x", m: "adj. 准时的，守时的；精确的" }).length >= 5, "释义不应只留逗号前两个字");
 ok(targetLabel(null) === "", "空目标返回空串");
 // 词性前缀要去掉：球上空间小，「n. 假期」不如「假期」
 ok(targetLabel({ w: "vacation", m: "n. 假期；休假" }) === "假期", "应去掉词性前缀 n.");

@@ -463,14 +463,45 @@ function finishStep(state: OrbState): OrbState {
 
 /** 词性前缀：词典释义多是「n. 假期」这种，球上空间小，先去掉 */
 const POS_PREFIX = /^(?:(?:n|v|vt|vi|adj|adv|prep|conj|pron|num|art|int|aux|abbr|a)\.\s*)+/i;
+/**
+ * 词性不只是出现在开头：「n.锁v.锁,锁上,锁住」这种是紧贴在汉字后面的。
+ * 所以匹配「分隔符或汉字 + 词性」，替换时把那个前导字符留下。
+ */
+const POS_INLINE = /(^|[\s,，、;；/\\\u4e00-\u9fa5])(?:vt|vi|v|n|adj|adv|prep|conj|pron|num|art|int|aux|abbr|a)\.\s*/gi;
 
-/** 玩家球上显示的中文短义：球不大，最多 8 字 */
-export function targetLabel(word: WordEntry | null, limit = 8): string {
+/**
+ * 把词性标记去掉，但**保留它作为义项边界**。
+ *
+ * 直接删掉会把两个义项黏成一句：「成本,价钱,代价vt.价值为…」→「成本,价钱,代价价值为…」，
+ * 再按 15 字截断就变成一锅粥。换成「；」之后，取第一个义项仍然是干净的。
+ */
+function stripPos(text: string): string {
+  let out = text.replace(POS_PREFIX, "");
+  let prev = "";
+  while (prev !== out) {
+    prev = out;
+    out = out.replace(POS_INLINE, "$1；");
+  }
+  return out.replace(/；{2,}/g, "；").replace(/^；/, "").trim();
+}
+
+/**
+ * 玩家球上显示的中文短义。
+ *
+ * 原来的写法是「按逗号切第一段 + 最多 8 字」，结果「准时的，守时的；精确的」只剩「准时的」，
+ * 玩家分不清近义词。现在的口径：
+ * - 去掉词性前缀（n. / adj. …）
+ * - **按分号切第一个义项**，保留逗号（逗号里常是同一义项的不同说法）
+ * - 再按 limit 截断，球上最多三行显示
+ */
+export function targetLabel(word: WordEntry | null, limit = 15): string {
   if (!word) return "";
-  const short = shortMeaning(word.m, limit);
-  const stripped = short.replace(POS_PREFIX, "").trim();
-  const text = stripped || short;
-  return text.length > limit ? `${text.slice(0, limit)}…` : text;
+  const raw = (word.m ?? "").trim();
+  if (!raw) return "";
+  const noPos = stripPos(raw);
+  const base = noPos || raw;
+  const first = base.split(/[；;]/)[0].trim() || base;
+  return first.length > limit ? `${first.slice(0, limit)}…` : first;
 }
 
 /** 结果页用的正确率 */

@@ -133,24 +133,77 @@ const a = layoutWordWithMeasure("abandon", 200, 20, 9, measure);
 ok(a.lines.length === 1 && a.lines[0] === "abandon", "短词应整词单行显示");
 ok(a.size >= 12, `短词字号应 ≥12px，实际 ${a.size}`);
 
-// 长词 + 挤空间 → 拆成两行，且字号不低于下限
+// 9 字母词 + 球上的实际宽度（r=24 时 maxWidth≈41）→ 必须折行，不能截断。
+// 这条是用户反馈「单词显示不全」的回归：旧规则只在 ≥11 字母时折行，9~10 字母会被截成「abando…」
+const nine = layoutWordWithMeasure("abandoned", 41, 15, 9, measure);
+ok(nine.lines.length >= 2, `9 字母词应折行，实际 ${nine.lines.join("/")}`);
+ok(nine.lines.join("") === "abandoned", "折行不能丢字母");
+console.log("  9 字母词:", nine.lines.join(" / "), "@", nine.size, "px");
+
+// 长词 + 挤空间 → 折成两行
 const b = layoutWordWithMeasure("extraordinarily", 70, 20, 9, measure);
-ok(b.lines.length === 2, `长词应拆两行，实际 ${b.lines.join("/")}`);
+ok(b.lines.length >= 2, `长词应折行，实际 ${b.lines.join("/")}`);
 ok(b.lines.join("") === "extraordinarily", "拆行不能丢字母");
 ok(b.size >= 9, `长词字号应 ≥9px，实际 ${b.size}`);
 
-// 极窄空间 → 兜底截断加省略号
-const c = layoutWordWithMeasure("extraordinarily", 30, 20, 9, measure);
-ok(c.lines[0].endsWith("…"), "放不下应截断加省略号");
+// 15 字母 + 更窄（r=24 的球宽）→ 三行也能放下
+const fifteen = layoutWordWithMeasure("extraordinarily", 41, 15, 9, measure);
+ok(fifteen.lines.join("") === "extraordinarily", "15 字母在球宽内应能完整折行");
+console.log("  15 字母词:", fifteen.lines.join(" / "), "@", fifteen.size, "px");
+
+// 极窄空间（比球还窄）→ 兜底截断加省略号
+const c = layoutWordWithMeasure("extraordinarily", 14, 20, 9, measure);
+ok(c.lines[0].endsWith("…"), `放不下应截断加省略号，实际 ${c.lines.join("/")}`);
 ok(c.size === 9, "兜底应停在下限字号");
 
-console.log(`文字可读性：短词 ${a.size}px 单行；长词拆 ${b.lines.length} 行 @${b.size}px；极窄截断 ${c.lines[0]}`);
+console.log(`文字可读性：短词 ${a.size}px 单行；长词 ${b.lines.length} 行 @${b.size}px；极窄截断 ${c.lines[0]}`);
 
 // 球数量与半径：10 个，别一屏塞满
 ok(ORB.foodCount === 10, `场上食物球应为 10 个，实际 ${ORB.foodCount}`);
 ok(ORB.foodR >= 26, `食物球世界半径应 ≥26，实际 ${ORB.foodR}`);
 
 renderer.clearParticles();
+// ---------------- 实际绘制：球上的字有没有被截断 ----------------
+// 直接用假 canvas 记录 fillText，比只测排版函数更接近真实：
+// 用户说的「单词显示不全 / 释义不全」就是画出来的字里带省略号。
+built.texts.length = 0;
+const longWordWords = [
+  { w: "extraordinarily", m: "adv. 非常，极其；特别地", p: "" },
+  { w: "abandoned", m: "adj. 被放弃的，被遗弃的", p: "" },
+  { w: "banana", m: "n. 香蕉", p: "" }
+];
+let drawn = startOrb(createOrbGame({ words: longWordWords, seed: 7, lives: 99 }));
+// 让目标词是那个释义最长的，短义才有 3 行可画
+drawn = { ...drawn, label: "非常，极其；特别地" };
+// 保证场上一定有 15 字母那个词，检查它有没有被截断
+drawn = {
+  ...drawn,
+  foods: drawn.foods.map((f, i) => ({
+    ...f,
+    word: "extraordinarily",
+    // 放在玩家附近，否则会被视口裁掉（drawFood 对屏幕外的球直接 return）
+    x: drawn.player.x + 40 * (i % 3) - 40,
+    y: drawn.player.y + 30,
+    correct: i === 0
+  })),
+  target: longWordWords[0]
+};
+built.texts.length = 0;
+renderer.draw(drawn, 0);
+
+const drawnTexts = built.texts.map((t) => t.text);
+const latin = drawnTexts.filter((t) => /[a-zA-Z]/.test(t));
+const joinedLatin = latin.join("");
+ok(joinedLatin.includes("extraordinarily") || latin.length > 1, `15 字母词应折行显示，实际 ${latin.join("/")}`);
+ok(!latin.some((t) => t.includes("…")), `球上的英文不该出现省略号，实际 ${latin.join("/")}`);
+console.log("  绘制英文:", latin.slice(0, 3).join(" / ") || "（无）");
+
+const cjk = drawnTexts.filter((t) => /[\u4e00-\u9fa5]/.test(t));
+const labelText = cjk.join("");
+ok(labelText.length >= 8, `中文短义应完整显示（≥8 字），实际「${labelText}」`);
+ok(!labelText.includes("…"), `中文短义不该被截断，实际「${labelText}」`);
+console.log("  绘制中文:", labelText || "（无）");
+
 renderer.destroy();
 
 console.log("\n✅ 渲染层冒烟通过（2x 画布 / 6 级背景 / 抖动 / 粒子 / 空场 / 零尺寸 / 文字可读性）");

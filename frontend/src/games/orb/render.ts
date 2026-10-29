@@ -272,14 +272,16 @@ export function createOrbRenderer(canvas: HTMLCanvasElement): OrbRenderer {
 
     const label = state.label;
     if (!label) return;
-    // 中文短义：字少就大，字多就小，最多两行
-    const perLine = r > 90 ? 6 : 4;
-    const lines = wrapLines(label, perLine, 2);
+    // 中文短义：字少就大、字多就小。最多三行 —— 两行时「准时的，守时的」只能塞 8 个字，
+    // 玩家分不清近义词（用户反馈「释义显示不全」多半是这里）。
+    const perLine = r > 90 ? 7 : r > 60 ? 6 : 5;
+    const lines = wrapLines(label, perLine, 3);
     const longest = Math.max(...lines.map((l) => l.length));
     let size = Math.min(28, Math.max(10, (r * 1.6) / Math.max(3, longest)));
-    const maxWidth = r * 1.7;
+    const maxWidth = r * 1.72;
+    const fits = () => lines.every((l) => ctx.measureText(l).width <= maxWidth);
     ctx.font = `700 ${size}px ${FONT_STACK}`;
-    while (size > 9 && ctx.measureText(lines[0] ?? "").width > maxWidth) {
+    while (size > 9 && !fits()) {
       size -= 1;
       ctx.font = `700 ${size}px ${FONT_STACK}`;
     }
@@ -367,15 +369,21 @@ export function layoutWordWithMeasure(
     if (measure(text, size) <= maxWidth) return { lines: [text], size };
   }
 
-  if (text.length >= 11) {
-    const mid = Math.ceil(text.length / 2);
-    const lines = [text.slice(0, mid), text.slice(mid)];
+  // 放不下一行就折：原先只对 ≥11 字母的词折行，导致 9~10 字母的词
+  // （cet4 571 个 / cet6 835 个）既放不进一行、也不折行，直接被截成「abando…」。
+  for (const lineCount of [2, 3]) {
+    if (text.length < lineCount * 2) break;
+    const per = Math.ceil(text.length / lineCount);
+    const lines: string[] = [];
+    for (let i = 0; i < text.length; i += per) lines.push(text.slice(i, i + per));
     for (let size = Math.round(maxFont * 0.92); size >= minFont; size--) {
       if (lines.every((line) => measure(line, size) <= maxWidth)) return { lines, size };
     }
   }
 
+  // 三行都放不下才截断
   let out = text;
   while (out.length > 1 && measure(`${out}…`, minFont) > maxWidth) out = out.slice(0, -1);
   return { lines: [out === text ? text : `${out}…`], size: minFont };
 }
+
