@@ -45,6 +45,12 @@ const routes = [
             },
             // 快乐学习 → 具体玩法。球球是全屏 Canvas，单独一个页面，不塞进列表页
             {
+              path: "words",
+              name: "study-words",
+              component: () => import("@/pages/WordPage.vue"),
+              meta: { title: "单词学习" }
+            },
+            {
               path: "play",
               name: "study-play",
               component: () => import("@/pages/PlayHomePage.vue"),

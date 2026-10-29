@@ -8,7 +8,7 @@ import {
   GraduationCap,
   Layers,
   BookOpen,
-  Gamepad2,
+  SpellCheck,
   ArrowRight,
   AlertCircle,
   Sparkles,
@@ -16,7 +16,6 @@ import {
 } from "lucide-vue-next";
 import { listFlashcards } from "@/services/flashcardService";
 import { loadPackIndex } from "@/services/knowledgePack";
-import { loadProgress } from "@/services/quest/engine";
 import { useReviewStore } from "@/stores/reviewStore";
 import { useDocumentStore } from "@/stores/documentStore";
 import { IS_MINITOOL } from "@/utils/runtime";
@@ -28,8 +27,8 @@ const docStore = useDocumentStore();
 
 const cards = ref<Flashcard[]>([]);
 const grammarTotal = ref(0);
-const questBest = ref(0);
-const questPlays = ref(0);
+const cet4Total = ref(0);
+const cet6Total = ref(0);
 const loading = ref(true);
 
 onMounted(async () => {
@@ -40,12 +39,11 @@ onMounted(async () => {
     try {
       const index = await loadPackIndex();
       grammarTotal.value = index.packs.find((p) => p.id === "grammar")?.count ?? 0;
+      cet4Total.value = index.packs.find((p) => p.id === "cet4")?.count ?? 0;
+      cet6Total.value = index.packs.find((p) => p.id === "cet6")?.count ?? 0;
     } catch {
       // 知识包加载失败不影响概览其余部分
     }
-    const progress = loadProgress();
-    questBest.value = Math.max(progress.cet4?.bestScore ?? 0, progress.cet6?.bestScore ?? 0);
-    questPlays.value = (progress.cet4?.plays ?? 0) + (progress.cet6?.plays ?? 0);
   }
   loading.value = false;
 });
@@ -221,16 +219,16 @@ const forecastMax = computed(() => Math.max(1, ...forecast.value.map((d) => d.co
       <button
         v-if="!IS_MINITOOL"
         class="card flex flex-col gap-2 p-4 text-left transition hover:shadow-md"
-        @click="router.push('/study/quest')"
+        @click="router.push('/study/words')"
       >
         <div class="flex items-center gap-2">
           <span class="flex h-9 w-9 items-center justify-center rounded-lg bg-rose-50 text-rose-600">
-            <Gamepad2 :size="18" />
+            <SpellCheck :size="18" />
           </span>
-          <span class="font-medium text-slate-800">单词闯关</span>
+          <span class="font-medium text-slate-800">单词学习</span>
         </div>
         <p class="text-xs text-slate-500">
-          {{ questPlays > 0 ? `已玩 ${questPlays} 局 · 最高 ${questBest} 分` : "四六级词库，答错自动复习" }}
+          四级 {{ cet4Total }} · 六级 {{ cet6Total }} 词，可逐词加入复习
         </p>
       </button>
     </div>

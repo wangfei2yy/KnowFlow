@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useRoute } from "vue-router";
-import { LayoutDashboard, Layers, BookOpen, Languages, Gamepad2 } from "lucide-vue-next";
+import { LayoutDashboard, Layers, BookOpen, Languages, SpellCheck, Gamepad2 } from "lucide-vue-next";
 import { useReviewStore } from "@/stores/reviewStore";
 import { IS_MINITOOL } from "@/utils/runtime";
 
@@ -15,7 +15,7 @@ interface Tab {
   badge?: number;
 }
 
-/** 端内没有知识包（无网络），语法 / 成语 / 快乐学习三个 Tab 不出现 */
+/** 端内没有知识包（无网络），语法 / 成语 / 单词 / 快乐学习四个 Tab 不出现 */
 const tabs = computed<Tab[]>(() => {
   const base: Tab[] = [
     { path: "/study", label: "概览", icon: LayoutDashboard },
@@ -26,6 +26,7 @@ const tabs = computed<Tab[]>(() => {
     ...base,
     { path: "/study/grammar", label: "语法", icon: BookOpen },
     { path: "/study/idiom", label: "成语", icon: Languages },
+    { path: "/study/words", label: "单词", icon: SpellCheck },
     { path: "/study/play", label: "快乐学习", icon: Gamepad2 }
   ];
 });
