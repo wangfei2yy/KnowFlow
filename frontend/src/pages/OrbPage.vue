@@ -72,6 +72,7 @@ interface Hud {
   combo: number;
   tier: number;
   label: string;
+  labelFull: string;
 }
 
 const hud = ref<Hud>({
@@ -81,7 +82,8 @@ const hud = ref<Hud>({
   maxLives: LIFE_RULE.cap,
   combo: 0,
   tier: 0,
-  label: ""
+  label: "",
+  labelFull: ""
 });
 
 const wordPacks = computed(() => packs.value.filter((p) => p.kind === "words"));
@@ -234,7 +236,8 @@ function syncHud(force = false) {
     maxLives: game.maxLives,
     combo: game.combo,
     tier: game.tier,
-    label: game.label
+    label: game.label,
+    labelFull: game.labelFull
   };
   const prev = hud.value;
   const changed =
@@ -391,25 +394,28 @@ const bestTierName = computed(() => (result.value ? tierName(result.value.tier) 
         </div>
       </div>
 
-      <!-- 目标提示（只给中文，不能给英文，否则一眼就找到答案了） -->
-      <div class="pointer-events-none absolute inset-x-0 top-12 flex justify-center">
-        <div class="flex items-center gap-1.5 rounded-full bg-white/85 px-3 py-1 text-xs text-slate-600 shadow-sm">
-          <Target :size="12" class="text-brand-500" />
-          吃掉意思是「<span class="font-semibold text-slate-800">{{ hud.label }}</span>」的球
-        </div>
-      </div>
-
-      <!-- 层级提示 -->
-      <transition name="fade">
+      <!-- 目标提示（只给中文，不能给英文，否则一眼就找到答案了）
+           这里用完整释义：球内只有十几个字，长释义放不下；横条可以换行 -->
+      <div class="pointer-events-none absolute inset-x-0 top-[52px] flex flex-col items-center gap-1.5 px-3">
         <div
-          v-if="banner"
-          class="pointer-events-none absolute inset-x-0 top-24 flex justify-center"
+          class="max-w-[94%] rounded-xl bg-white/90 px-3 py-1.5 text-center text-xs leading-relaxed text-slate-600 shadow-sm"
         >
-          <span class="rounded-full bg-slate-900/80 px-4 py-1.5 text-sm font-medium text-white">
+          <Target :size="12" class="mr-1 inline-block align-[-2px] text-brand-500" />
+          吃掉意思是
+          <span class="font-semibold text-slate-800">{{ hud.labelFull || hud.label }}</span>
+          的球
+        </div>
+
+        <!-- 事件提示（升级 / 回血） -->
+        <transition name="fade">
+          <span
+            v-if="banner"
+            class="rounded-full bg-slate-900/80 px-4 py-1.5 text-sm font-medium text-white"
+          >
             {{ banner }}
           </span>
-        </div>
-      </transition>
+        </transition>
+      </div>
 
       <!-- 虚拟摇杆 -->
       <div

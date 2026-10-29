@@ -79,6 +79,8 @@ export interface OrbState {
   target: WordEntry | null;
   /** 玩家球上显示的中文短义，随目标词更新（渲染层直接用，免得每帧算） */
   label: string;
+  /** 顶部提示条的完整释义：球内放不下，屏幕上方的横条可以换行显示 */
+  labelFull: string;
   lives: number;
   maxLives: number;
   score: number;
@@ -283,6 +285,7 @@ export function createOrbGame(config: OrbConfig): OrbState {
     orderPos: 0,
     target: null,
     label: "",
+    labelFull: "",
     lives,
     maxLives: maxLivesOf(lives),
     score: 0,
@@ -311,6 +314,7 @@ export function createOrbGame(config: OrbConfig): OrbState {
   );
   state.target = nextTarget(state);
   state.label = targetLabel(state.target);
+  state.labelFull = fullLabel(state.target);
 
   topUpFoods(state);
   normalizeFoods(state);
@@ -430,6 +434,7 @@ function resolveEat(state: OrbState, food: Food): OrbState {
     state.orderPos = (state.orderPos + 1) % Math.max(1, state.order.length);
     state.target = nextTarget(state);
     state.label = targetLabel(state.target);
+  state.labelFull = fullLabel(state.target);
   } else {
     // 吃错：缩球 + 掉命 + 目标词不变（还得继续找它）
     state.wrong += 1;
@@ -502,6 +507,21 @@ export function targetLabel(word: WordEntry | null, limit = 15): string {
   const base = noPos || raw;
   const first = base.split(/[；;]/)[0].trim() || base;
   return first.length > limit ? `${first.slice(0, limit)}…` : first;
+}
+
+/**
+ * 顶部提示条用的释义：保留**全部义项**，只是把词性标记换成「；」。
+ *
+ * 为什么和 targetLabel 分开：球内空间就那么大，15 字已经是极限（再多就要缩字号，
+ * 上次就是因为缩字号被反馈「看不清」）。完整意思放到屏幕上方的横条里，那里可以换行。
+ */
+export function fullLabel(word: WordEntry | null, limit = 40): string {
+  if (!word) return "";
+  const raw = (word.m ?? "").trim();
+  if (!raw) return "";
+  const base = stripPos(raw) || raw;
+  const compact = base.replace(/\s+/g, " ").trim();
+  return compact.length > limit ? `${compact.slice(0, limit)}…` : compact;
 }
 
 /** 结果页用的正确率 */

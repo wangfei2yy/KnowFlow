@@ -10,6 +10,7 @@ import {
   cameraScale,
   tierOf,
   targetLabel,
+  fullLabel,
   timeText,
   orbAccuracy,
   fieldRadius,
@@ -198,6 +199,21 @@ ok(targetLabel(null) === "", "空目标返回空串");
 ok(targetLabel({ w: "vacation", m: "n. 假期；休假" }) === "假期", "应去掉词性前缀 n.");
 ok(targetLabel({ w: "run", m: "vt. 跑；经营" }) === "跑", "应去掉 vt.");
 ok(targetLabel({ w: "x", m: "n." }) === "n.", "只有词性时保留原文");
+
+// 顶部提示用完整释义：保留全部义项，词性换成「；」分隔
+ok(
+  fullLabel({ w: "x", m: "adj. 准时的，守时的；精确的" }) === "准时的，守时的；精确的",
+  `完整释义应保留所有义项，实际 ${fullLabel({ w: "x", m: "adj. 准时的，守时的；精确的" })}`
+);
+ok(
+  fullLabel({ w: "cost", m: "n.成本,价钱,代价vt.价值为" }) === "成本,价钱,代价；价值为",
+  `词性应变成义项分隔，实际 ${fullLabel({ w: "cost", m: "n.成本,价钱,代价vt.价值为" })}`
+);
+// 球内短义只到第一个义项，顶部要更长 —— 这正是这次改动要保证的
+const longM = { w: "x", m: "adj. 准时的，守时的；精确的，准确的" };
+ok(fullLabel(longM).length > targetLabel(longM).length, "顶部释义必须比球内短义更长");
+ok(fullLabel(longM, 4) === "准时的，…", `limit 4 应截断（保留前 4 字），实际 ${fullLabel(longM, 4)}`);
+ok(fullLabel(null) === "" && fullLabel({ w: "x", m: "" }) === "", "空目标返回空串");
 ok(timeText(60) === "1:00" && timeText(9) === "0:09" && timeText(-1) === "0:00", "计时文案");
 ok(orbAccuracy(startOrb(createOrbGame({ words, seed: 4 }))) === 0, "没答过时正确率为 0");
 
