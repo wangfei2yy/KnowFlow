@@ -316,12 +316,9 @@ const masteryColor: Record<Mastery, string> = {
 </script>
 
 <template>
-  <div class="mx-auto max-w-4xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
-    <div class="mb-5 flex items-center justify-between">
-      <div>
-        <h1 class="text-2xl font-bold text-slate-900">学习中心</h1>
-        <p class="mt-1 text-sm text-slate-500">翻面查看答案，标记掌握程度，让知识真正被记住。</p>
-      </div>
+  <div>
+    <div class="mb-4 flex items-center justify-between gap-3">
+      <p class="text-xs text-slate-500">翻面查看答案，标记掌握程度，让知识真正被记住。</p>
       <!-- 视图切换 -->
       <div class="flex rounded-lg bg-slate-100 p-1">
         <button

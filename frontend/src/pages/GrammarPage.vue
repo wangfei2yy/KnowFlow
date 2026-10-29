@@ -202,15 +202,11 @@ function cancelGen() {
 </script>
 
 <template>
-  <div class="mx-auto max-w-6xl px-4 py-6 lg:px-6">
-    <!-- 头部 -->
-    <div class="mb-5 flex flex-wrap items-center gap-3">
-      <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
-        <BookOpen :size="20" />
-      </div>
+  <div>
+    <!-- 头部：标题由顶部 Tab 承担，这里只留说明与操作 -->
+    <div class="mb-4 flex flex-wrap items-center gap-3">
       <div class="min-w-0 flex-1">
-        <h1 class="text-xl font-bold text-slate-900 lg:text-2xl">语法学习</h1>
-        <p class="text-xs text-slate-400">
+        <p class="text-xs text-slate-500">
           内置 {{ topics.length }} 个语法点 · {{ categories.length }} 个专题，可直接阅读、加入资料库或生成卡片
         </p>
       </div>

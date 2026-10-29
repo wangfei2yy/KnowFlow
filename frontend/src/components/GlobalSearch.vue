@@ -82,7 +82,7 @@ function goto(hit: GlobalHit | undefined) {
   if (hit.kind === "document") {
     router.push(`/library/${hit.id}${kw ? `?hit=${encodeURIComponent(kw)}` : ""}`);
   } else if (hit.kind === "card") {
-    router.push(`/study?card=${hit.id}`);
+    router.push(`/study/cards?card=${hit.id}`);
   } else {
     router.push(`/tasks?task=${hit.id}`);
   }

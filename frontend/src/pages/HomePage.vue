@@ -4,6 +4,7 @@ import { useRouter } from "vue-router";
 import { useDocumentStore } from "@/stores/documentStore";
 import { useTaskStore } from "@/stores/taskStore";
 import { useReviewStore } from "@/stores/reviewStore";
+import { IS_MINITOOL } from "@/utils/runtime";
 import SearchBar from "@/components/SearchBar.vue";
 import DocumentCard from "@/components/DocumentCard.vue";
 import EmptyState from "@/components/EmptyState.vue";
@@ -31,14 +32,23 @@ onMounted(() => {
   void reviewStore.refresh();
 });
 
-const quickActions = [
+const allQuickActions = [
   { label: "新增资料", desc: "快速记录想法和知识", icon: Plus, to: "/editor", color: "bg-brand-50 text-brand-600" },
   { label: "AI 整理", desc: "提炼重点与行动项", icon: Sparkles, to: "/assistant", color: "bg-violet-50 text-violet-600" },
   { label: "资料问答", desc: "基于资料查找答案", icon: MessageCircleQuestion, to: "/assistant", color: "bg-emerald-50 text-emerald-600" },
   { label: "学习复习", desc: "把知识变成记忆卡片", icon: GraduationCap, to: "/study", color: "bg-amber-50 text-amber-600" },
-  { label: "语法学习", desc: "50 个语法点，可生成卡片", icon: BookOpen, to: "/grammar", color: "bg-indigo-50 text-indigo-600" },
-  { label: "单词闯关", desc: "10 题一组，错词自动复习", icon: Gamepad2, to: "/quest", color: "bg-rose-50 text-rose-600" }
+  { label: "语法学习", desc: "50 个语法点，可生成卡片", icon: BookOpen, to: "/study/grammar", color: "bg-indigo-50 text-indigo-600" },
+  { label: "单词闯关", desc: "10 题一组，错词自动复习", icon: Gamepad2, to: "/study/quest", color: "bg-rose-50 text-rose-600" }
 ];
+
+/** 端内无网络、知识包加载不了，语法与闯关两个快捷入口不渲染 */
+const quickActions = computed(() =>
+  IS_MINITOOL
+    ? allQuickActions.filter(
+        (a) => !a.to.startsWith("/study/grammar") && !a.to.startsWith("/study/quest")
+      )
+    : allQuickActions
+);
 
 const stats = computed(() => [
   { label: "我的资料", value: docStore.totalCount, icon: FolderOpen, color: "text-brand-600 bg-brand-50", to: "/library" },
@@ -102,7 +112,7 @@ function openDocument(id: string) {
       </div>
       <router-link
         v-if="reviewStore.hasPending"
-        to="/study?mode=review"
+        to="/study/cards?mode=review"
         class="btn-primary shrink-0"
       >
         开始复习

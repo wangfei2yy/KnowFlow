@@ -1,4 +1,5 @@
 import { createRouter, createWebHashHistory } from "vue-router";
+import type { RouteLocation } from "vue-router";
 import { IS_MINITOOL } from "@/utils/runtime";
 
 const routes = [
@@ -9,33 +10,74 @@ const routes = [
   { path: "/editor/:id", name: "editor-edit", component: () => import("@/pages/EditorPage.vue"), meta: { title: "编辑资料" } },
   { path: "/assistant", name: "assistant", component: () => import("@/pages/AssistantPage.vue"), meta: { title: "AI 工作台" } },
   { path: "/tasks", name: "tasks", component: () => import("@/pages/TasksPage.vue"), meta: { title: "任务清单" } },
-  { path: "/study", name: "study", component: () => import("@/pages/StudyPage.vue"), meta: { title: "学习中心" } },
+  // 学习模块：一个外壳 + 四个子面板，切换 Tab 不整页跳转
+  {
+    path: "/study",
+    component: () => import("@/pages/StudyLayout.vue"),
+    children: [
+      {
+        path: "",
+        name: "study",
+        component: () => import("@/pages/StudyOverview.vue"),
+        meta: { title: "学习" }
+      },
+      {
+        path: "cards",
+        name: "study-cards",
+        component: () => import("@/pages/StudyPage.vue"),
+        meta: { title: "卡片复习" }
+      },
+      // 语法与闯关依赖在线知识包（fetch），端内不注册子路由，也就不会打进产物
+      ...(IS_MINITOOL
+        ? []
+        : [
+            {
+              path: "grammar",
+              name: "study-grammar",
+              component: () => import("@/pages/GrammarPage.vue"),
+              meta: { title: "语法学习" }
+            },
+            {
+              path: "quest",
+              name: "study-quest",
+              component: () => import("@/pages/QuestPage.vue"),
+              meta: { title: "单词闯关" }
+            }
+          ])
+    ]
+  },
   { path: "/import", name: "import", component: () => import("@/pages/ImportPage.vue"), meta: { title: "文件导入" } },
   { path: "/settings", name: "settings", component: () => import("@/pages/SettingsPage.vue"), meta: { title: "设置" } }
 ];
 
-// 闯关与语法学习都依赖在线知识包（fetch），端内不注册路由（也就不会打进产物）
-const extraRoutes = IS_MINITOOL
+/**
+ * 旧链接兼容：这两个路径在上一版是顶层页面，已发布出去，不能直接失效。
+ * 用 redirect 保留 query（例如 /grammar?topic=xxx）。
+ */
+const legacyRoutes = IS_MINITOOL
   ? []
   : [
       {
-        path: "/quest",
-        name: "quest",
-        component: () => import("@/pages/QuestPage.vue"),
-        meta: { title: "单词闯关" }
-      },
-      {
         path: "/grammar",
-        name: "grammar",
-        component: () => import("@/pages/GrammarPage.vue"),
-        meta: { title: "语法学习" }
-      }
+        redirect: (to: RouteLocation) => ({
+          path: "/study/grammar",
+          query: to.query
+        })
+      },
+      { path: "/quest", redirect: "/study/quest" }
     ];
+
+/**
+ * 兜底：未匹配的路径回首页。
+ * 典型场景是端内打开了网页版分享的 /study/grammar（端内没注册该子路由），
+ * 不加兜底会停在空白页。
+ */
+const fallbackRoute = { path: "/:pathMatch(.*)*", redirect: "/" };
 
 export const router = createRouter({
   // 使用 hash 路由，静态托管刷新不 404，便于发布到任意子路径
   history: createWebHashHistory(),
-  routes: [...routes, ...extraRoutes]
+  routes: [...routes, ...legacyRoutes, fallbackRoute]
 });
 
 /**

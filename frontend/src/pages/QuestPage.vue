@@ -123,13 +123,10 @@ const accuracyText = computed(() =>
 </script>
 
 <template>
-  <div class="mx-auto max-w-2xl px-4 py-6 sm:px-6 lg:py-8">
-    <div class="mb-5">
-      <h1 class="text-2xl font-bold text-slate-900">单词闯关</h1>
-      <p class="mt-1 text-sm text-slate-500">
-        10 题一组，3 条命。答错的词会自动进入复习队列，明天由学习中心提醒你。
-      </p>
-    </div>
+  <div class="mx-auto max-w-2xl">
+    <p class="mb-4 text-xs text-slate-500">
+      10 题一组，3 条命。答错的词会自动进入复习队列，明天由学习中心提醒你。
+    </p>
 
     <!-- 选词库 -->
     <template v-if="phase === 'lobby'">
@@ -245,7 +242,7 @@ const accuracyText = computed(() =>
             <span class="truncate text-xs text-slate-500">{{ w.m }}</span>
           </li>
         </ul>
-        <button class="btn-secondary mt-3" @click="router.push('/study?mode=review')">
+        <button class="btn-secondary mt-3" @click="router.push('/study/cards?mode=review')">
           去复习这些词 <ArrowRight :size="14" />
         </button>
       </div>
