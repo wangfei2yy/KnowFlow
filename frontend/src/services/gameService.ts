@@ -205,11 +205,11 @@ export function gameScoreOf(progress: GameProgress, gameId: string, packId: stri
   return progress[gameId]?.[packId] ?? { bestScore: 0, plays: 0, lastPlayedAt: "" };
 }
 
-// ---------------- 游戏中心选中的词库 ----------------
+// ---------------- 快乐学习里选中的词库 ----------------
 
 const PLAY_PACK_KEY = "knowflow.play.pack";
 
-/** 游戏中心里选的词库，进入具体游戏时带在路由上，这里只做「上次选的」记忆 */
+/** 快乐学习里选的词库，进入具体游戏时带在路由上，这里只做「上次选的」记忆 */
 export function loadPlayPack(fallback = "cet4"): string {
   try {
     return localStorage.getItem(PLAY_PACK_KEY) || fallback;

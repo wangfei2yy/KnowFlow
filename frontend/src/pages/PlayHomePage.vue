@@ -1,10 +1,10 @@
 <script setup lang="ts">
 /**
- * 游戏中心：把「单词闯关」升级成一种玩法，为后续小游戏留位置。
+ * 快乐学习：把「单词闯关」收纳成一种玩法，为后续小游戏留位置。
  *
  * 页面上只做三件事：选词库、看成绩、进游戏。
  * 具体玩法各自是独立页面（/study/play/quest、/study/play/orb），
- * 这样球球那种全屏 Canvas 游戏不会把游戏中心拖成大杂烩。
+ * 这样球球那种全屏 Canvas 游戏不会把这个列表页拖成大杂烩。
  */
 import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
