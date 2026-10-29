@@ -162,7 +162,10 @@ async function addToTasks(r: RecipeEntry) {
           </span>
         </div>
         <div class="mt-auto flex items-center gap-3 text-[11px] text-slate-400">
-          <span class="flex items-center gap-1"><ChefHat :size="12" /> {{ r.materials.length || "—" }} 种材料</span>
+          <span class="flex items-center gap-1">
+            <ChefHat :size="12" />
+            {{ r.materials.length ? `${r.materials.length} 种材料` : "材料未列" }}
+          </span>
           <span class="flex items-center gap-1"><Clock :size="12" /> {{ r.steps.length }} 步</span>
         </div>
       </button>
