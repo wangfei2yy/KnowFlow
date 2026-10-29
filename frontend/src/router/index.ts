@@ -51,6 +51,13 @@ const routes = [
               meta: { title: "单词学习" }
             },
             {
+              // 单关背单词：一关 50 词，四选一
+              path: "words/drill",
+              name: "study-words-drill",
+              component: () => import("@/pages/WordDrillPage.vue"),
+              meta: { title: "背单词" }
+            },
+            {
               path: "play",
               name: "study-play",
               component: () => import("@/pages/PlayHomePage.vue"),

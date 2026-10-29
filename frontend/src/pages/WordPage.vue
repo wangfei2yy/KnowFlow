@@ -11,6 +11,13 @@ import { useAppStore } from "@/stores/appStore";
 import { useReviewStore } from "@/stores/reviewStore";
 import { loadPackIndex, loadWords, type PackMeta } from "@/services/knowledgePack";
 import { shortMeaning, type WordEntry } from "@/services/quest/engine";
+import {
+  DRILL,
+  levelRange,
+  loadDrillProgress,
+  summarizeDrill,
+  type LevelMap
+} from "@/services/wordLearn";
 import { addWordToReview } from "@/services/quest/wordCards";
 import { listFlashcards } from "@/services/flashcardService";
 import { IS_MINITOOL } from "@/utils/runtime";
@@ -21,7 +28,11 @@ import {
   Check,
   Gamepad2,
   ArrowUpDown,
-  X
+  X,
+  Layers,
+  BookOpen,
+  Play,
+  CheckCircle2
 } from "lucide-vue-next";
 
 const route = useRoute();
@@ -46,6 +57,10 @@ const addingWord = ref("");
 
 const scrollTop = ref(0);
 const scrollEl = ref<HTMLElement | null>(null);
+
+/** 词表 / 背单词 两个视图：同一个页面的两种用法，不另开入口 */
+const mode = ref<"list" | "drill">((route.query.mode as string) === "drill" ? "drill" : "list");
+const drillMap = ref<LevelMap>({});
 
 /** 只保留真正的单词包，成语有自己的页面 */
 const wordPacks = computed(() => packs.value.filter((p) => p.kind === "words" && p.id !== "idiom"));
@@ -88,6 +103,7 @@ async function loadPack(id: string) {
     keyword.value = "";
     scrollTop.value = 0;
     if (scrollEl.value) scrollEl.value.scrollTop = 0;
+    drillMap.value = loadDrillProgress(id);
   } catch (e) {
     error.value = e instanceof Error ? e.message : "词库加载失败";
     words.value = [];
@@ -95,6 +111,28 @@ async function loadPack(id: string) {
     loading.value = false;
   }
 }
+
+// 地址栏改 ?pack 也要跟着换（分享链接、浏览器前进后退都走这条），
+// 否则页面停在上一个词库、URL 却显示新词库，两者对不上
+watch(
+  () => route.query.pack,
+  (v) => {
+    const id = String(v ?? "");
+    if (!id || id === packId.value) return;
+    // 词库索引已加载时只接受真正的单词包；未加载完则先放行，由 loadPack 自己报错
+    if (packs.value.length && !wordPacks.value.some((p) => p.id === id)) return;
+    packId.value = id;
+    void loadPack(id);
+  }
+);
+
+watch(
+  () => route.query.mode,
+  (v) => {
+    const next = v === "drill" ? "drill" : "list";
+    if (next !== mode.value) mode.value = next;
+  }
+);
 
 function switchPack(id: string) {
   if (id === packId.value) return;
@@ -171,6 +209,26 @@ async function add(word: WordEntry) {
   }
 }
 
+/** 关卡总览：已过几关、已覆盖多少词、下一关是第几关 */
+const drillSummary = computed(() => summarizeDrill(drillMap.value, words.value.length));
+
+function startLevel(i: number) {
+  router.push({ path: "/study/words/drill", query: { pack: packId.value, level: i } });
+}
+
+function switchMode(next: "list" | "drill") {
+  if (mode.value === next) return;
+  mode.value = next;
+  router.replace({ path: "/study/words", query: { pack: packId.value, ...(next === "drill" ? { mode: "drill" } : {}) } });
+}
+
+function levelState(i: number): "passed" | "tried" | "todo" {
+  const rec = drillMap.value[i];
+  if (rec?.passed) return "passed";
+  if (rec) return "tried";
+  return "todo";
+}
+
 function gotoQuest() {
   router.push({ path: "/study/play/quest", query: { pack: packId.value } });
 }
@@ -182,10 +240,30 @@ function meaning(w: WordEntry): string {
 
 <template>
   <div>
-    <p class="mb-4 text-xs text-slate-500">
+    <!-- 词表 / 背单词：同一份词库的两种用法 -->
+    <div class="mb-3 inline-flex rounded-full bg-slate-100 p-0.5 text-xs">
+      <button
+        class="flex items-center gap-1 rounded-full px-3 py-1 transition"
+        :class="mode === 'list' ? 'bg-white font-medium text-slate-800 shadow-sm' : 'text-slate-500'"
+        @click="switchMode('list')"
+      >
+        <BookOpen :size="12" /> 词表
+      </button>
+      <button
+        class="flex items-center gap-1 rounded-full px-3 py-1 transition"
+        :class="mode === 'drill' ? 'bg-white font-medium text-slate-800 shadow-sm' : 'text-slate-500'"
+        @click="switchMode('drill')"
+      >
+        <Layers :size="12" /> 背单词
+      </button>
+    </div>
+
+    <p v-if="mode === 'list'" class="mb-4 text-xs text-slate-500">
       按字母翻阅词库，遇到不熟的词点「加入复习」，交给复习计划安排回看。
-      想边玩边背就去
-      <button class="text-brand-600 hover:underline" @click="gotoQuest">闯关</button>。
+    </p>
+    <p v-else class="mb-4 text-xs text-slate-500">
+      一关 {{ DRILL.perLevel }} 个词，四选一，答完为止（不掉命）；正确率
+      {{ Math.round(DRILL.passRate * 100) }}% 算过关。关卡按词量自动划分。
     </p>
 
     <!-- 词库切换 -->
@@ -205,8 +283,8 @@ function meaning(w: WordEntry): string {
       </span>
     </div>
 
-    <!-- 搜索 + 首字母 -->
-    <div class="mb-3 space-y-2 rounded-xl border border-slate-100 bg-white p-3">
+    <!-- 搜索 + 首字母（词表模式） -->
+    <div v-if="mode === 'list'" class="mb-3 space-y-2 rounded-xl border border-slate-100 bg-white p-3">
       <div class="flex items-center gap-2">
         <div class="relative flex-1">
           <Search :size="14" class="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -254,9 +332,85 @@ function meaning(w: WordEntry): string {
       <Loader2 :size="16" class="animate-spin" /> 正在加载词库…
     </div>
     <div v-else-if="error" class="card p-6 text-sm text-slate-500">{{ error }}</div>
-    <div v-else-if="!total" class="card p-6 text-center text-sm text-slate-500">
-      没找到匹配的词，换个关键词或清掉首字母筛选。
-    </div>
+
+    <!-- 背单词：关卡总览 -->
+    <template v-else-if="mode === 'drill'">
+      <div class="card p-4">
+        <div class="flex flex-wrap items-center gap-3">
+          <div>
+            <div class="text-sm font-medium text-slate-800">
+              已过 {{ drillSummary.cleared }} / {{ drillSummary.levels }} 关
+            </div>
+            <div class="mt-0.5 text-xs text-slate-500">
+              覆盖 {{ drillSummary.wordsDone }} / {{ words.length }} 词
+            </div>
+          </div>
+          <button
+            class="btn-primary ml-auto py-2 text-sm"
+            :disabled="!drillSummary.levels"
+            @click="startLevel(drillSummary.next < drillSummary.levels ? drillSummary.next : 0)"
+          >
+            <Play :size="14" />
+            {{
+              drillSummary.cleared >= drillSummary.levels && drillSummary.levels > 0
+                ? "重新从第 1 关开始"
+                : `继续第 ${drillSummary.next + 1} 关`
+            }}
+          </button>
+        </div>
+        <div class="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100">
+          <div
+            class="h-full rounded-full bg-emerald-500 transition-all"
+            :style="{ width: `${drillSummary.levels ? (drillSummary.cleared / drillSummary.levels) * 100 : 0}%` }"
+          />
+        </div>
+      </div>
+
+      <div class="card mt-3 p-4">
+        <div class="mb-2 flex items-center justify-between text-xs text-slate-400">
+          <span>全部关卡</span>
+          <span class="flex items-center gap-3">
+            <span class="flex items-center gap-1">
+              <i class="inline-block h-2 w-2 rounded-sm bg-emerald-500"></i> 已过关
+            </span>
+            <span class="flex items-center gap-1">
+              <i class="inline-block h-2 w-2 rounded-sm bg-amber-400"></i> 做过了
+            </span>
+          </span>
+        </div>
+        <div class="grid max-h-[420px] grid-cols-6 gap-1.5 overflow-y-auto sm:grid-cols-10">
+          <button
+            v-for="i in drillSummary.levels"
+            :key="i"
+            class="flex h-11 flex-col items-center justify-center rounded-lg border text-xs transition"
+            :class="
+              levelState(i - 1) === 'passed'
+                ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-emerald-300'
+                : levelState(i - 1) === 'tried'
+                  ? 'border-amber-200 bg-amber-50 text-amber-700 hover:border-amber-300'
+                  : 'border-slate-200 bg-white text-slate-500 hover:border-brand-300 hover:bg-brand-50/40'
+            "
+            :title="`第 ${levelRange(i - 1, words.length).start}~${levelRange(i - 1, words.length).end} 词${
+              drillMap[i - 1] ? ` · 最好 ${drillMap[i - 1].best}/${drillMap[i - 1].total}` : ''
+            }`"
+            @click="startLevel(i - 1)"
+          >
+            <span class="font-medium">{{ i }}</span>
+            <CheckCircle2 v-if="levelState(i - 1) === 'passed'" :size="9" class="opacity-70" />
+          </button>
+        </div>
+        <p class="mt-2 text-[11px] text-slate-400">
+          关卡按词量自动划分：共 {{ words.length }} 词 → {{ drillSummary.levels }} 关，最后一关
+          {{ levelRange(drillSummary.levels - 1, words.length).end - levelRange(drillSummary.levels - 1, words.length).start + 1 }} 个词。
+        </p>
+      </div>
+    </template>
+
+    <template v-else-if="!total">
+      <div class="card p-6 text-center text-sm text-slate-500">
+        没找到匹配的词，换个关键词或清掉首字母筛选。
+      </div>
+    </template>
 
     <template v-else>
       <div class="mb-2 flex items-center justify-between text-xs text-slate-400">
