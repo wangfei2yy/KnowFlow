@@ -11,7 +11,7 @@
 
 | 日期 | 计划 | 文件 |
 | --- | --- | --- |
-| — | 暂无 | — |
+| 2026-10-29 | v5 迭代：成语与饮食「从陈列到可用」 | [2026-10-29-v5-idiom-and-kitchen-flexible.md](active/2026-10-29-v5-idiom-and-kitchen-flexible/2026-10-29-v5-idiom-and-kitchen-flexible.md) |
 
 ## 已完成
 
