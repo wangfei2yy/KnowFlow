@@ -8,12 +8,14 @@ import {
   Loader2,
   RefreshCw,
   ShoppingBasket,
+  Carrot,
   CalendarRange,
   ListPlus,
   ChevronDown,
   AlertCircle
 } from "lucide-vue-next";
-import { loadRecipes, type MealKey, type RecipeEntry } from "@/services/knowledgePack";
+import { loadRecipes, loadIngredients, type IngredientEntry, type MealKey, type RecipeEntry } from "@/services/knowledgePack";
+import { CATEGORY_LABEL, categorizeIngredients } from "@/services/foodPack";
 import { useTaskStore } from "@/stores/taskStore";
 import { useAppStore } from "@/stores/appStore";
 
@@ -40,6 +42,7 @@ interface PlanDay {
 }
 
 const plan = ref<PlanDay[]>([]);
+const ingredients = ref<IngredientEntry[]>([]);
 
 const MEALS: MealKey[] = ["breakfast", "lunch", "dinner"];
 const MEAL_LABEL: Record<MealKey, string> = {
@@ -51,6 +54,10 @@ const MEAL_LABEL: Record<MealKey, string> = {
 const WEEK = ["日", "一", "二", "三", "四", "五", "六"];
 
 onMounted(async () => {
+  // 食材图鉴加载失败不影响计划生成，只是少了「食材构成」这一块
+  void loadIngredients()
+    .then((list) => (ingredients.value = list))
+    .catch(() => {});
   try {
     recipes.value = await loadRecipes();
     generate();
@@ -144,6 +151,19 @@ const shopping = computed(() => {
     }
   }
   return [...map.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "zh"));
+});
+
+/**
+ * 本周食材构成：按图鉴的分类归类计数。
+ * 只数「种数」，不折算热量 —— 原始菜谱没有份量（写的是「适量」），
+ * 硬算热量只会得出一个假的数字。
+ */
+const foodSummary = computed(() => {
+  if (!ingredients.value.length || !shopping.value.length) return null;
+  return categorizeIngredients(
+    shopping.value.map(([name]) => name),
+    ingredients.value
+  );
 });
 
 /** 计划里没有材料清单的菜数（原始数据只有做法） */
@@ -281,6 +301,34 @@ async function addTodayToTasks() {
           </span>
         </div>
         <p v-else class="mt-2 text-[11px] text-slate-400">点开可看完整清单，数字表示出现在几餐里。</p>
+      </div>
+
+      <!-- 食材构成（按图鉴归类） -->
+      <div v-if="foodSummary && foodSummary.matched" class="card mt-4 p-4">
+        <div class="flex items-center gap-2 text-sm font-medium text-slate-700">
+          <Carrot :size="16" class="text-brand-600" />
+          本周食材构成
+          <router-link
+            to="/kitchen/ingredient"
+            class="ml-auto text-xs font-normal text-brand-600 hover:underline"
+          >
+            看营养与功效
+          </router-link>
+        </div>
+        <div class="mt-2.5 flex flex-wrap gap-1.5">
+          <span
+            v-for="c in foodSummary.counts"
+            :key="c.category"
+            class="rounded-lg bg-slate-50 px-2 py-1 text-xs text-slate-600"
+          >
+            {{ CATEGORY_LABEL[c.category] }}
+            <span class="ml-0.5 font-medium text-slate-800">{{ c.count }}</span>
+          </span>
+        </div>
+        <p class="mt-2 text-[11px] leading-relaxed text-slate-400">
+          共 {{ foodSummary.total }} 种材料，其中 {{ foodSummary.matched }} 种已收录图鉴。
+          菜谱只写「适量」没有份量，因此这里只统计种数，不折算热量。
+        </p>
       </div>
     </template>
   </div>

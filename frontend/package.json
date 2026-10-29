@@ -19,9 +19,12 @@
     "test:quest": "node scripts/run-quest.mjs",
     "test:orb": "node scripts/run-orb.mjs && node scripts/run-orb-render.mjs",
     "test:progress": "node scripts/run-progress.mjs",
-    "build:packs": "node scripts/build-packs.mjs && node scripts/build-life-packs.mjs",
+    "build:packs": "node scripts/build-packs.mjs && node scripts/build-life-packs.mjs && node scripts/build-food-packs.mjs",
     "test:markdown": "node scripts/run-markdown.mjs",
-    "test:packs": "node scripts/smoke-packs.mjs"
+    "test:packs": "node scripts/smoke-packs.mjs",
+    "build:food": "node scripts/build-food-packs.mjs",
+    "test:food": "node scripts/smoke-food.mjs && node scripts/run-food-logic.mjs",
+    "test:food:logic": "node scripts/run-food-logic.mjs"
   },
   "dependencies": {
     "dexie": "^4.0.8",

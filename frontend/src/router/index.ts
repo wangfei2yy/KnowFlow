@@ -90,6 +90,12 @@ const routes = [
               name: "kitchen-plan",
               component: () => import("@/pages/PlanPage.vue"),
               meta: { title: "饮食计划" }
+            },
+            {
+              path: "ingredient",
+              name: "kitchen-ingredient",
+              component: () => import("@/pages/IngredientPage.vue"),
+              meta: { title: "食材图鉴" }
             }
           ]
         }

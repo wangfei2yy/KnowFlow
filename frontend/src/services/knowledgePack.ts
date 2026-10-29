@@ -51,6 +51,46 @@ export interface GrammarTopic {
   content: string;
 }
 
+export type IngredientCategory =
+  | "vegetable"
+  | "fruit"
+  | "mushroom"
+  | "meat"
+  | "egg"
+  | "seafood"
+  | "bean"
+  | "grain"
+  | "nut"
+  | "dairy";
+
+/**
+ * 食材图鉴条目。营养值都是「每 100g 可食部」的参考值，
+ * 没有可靠数据的字段直接缺省，不是 0。
+ */
+export interface IngredientEntry {
+  name: string;
+  alias?: string[];
+  emoji: string;
+  category: IngredientCategory;
+  /** 当季季节；空数组表示四季常见 */
+  seasons: string[];
+  nutrition: {
+    kcal: number;
+    protein?: number;
+    carb?: number;
+    fat?: number;
+    fiber?: number;
+    vc?: number;
+    potassium?: number;
+    calcium?: number;
+    iron?: number;
+    carotene?: number;
+  };
+  benefit: string;
+  storage: string;
+  caution?: string;
+}
+
 const BASE = `${import.meta.env.BASE_URL}packs/`;
 const cache = new Map<string, unknown>();
 
@@ -85,4 +125,8 @@ export function loadRecipes(): Promise<RecipeEntry[]> {
 
 export function loadSeasons(): Promise<SeasonEntry[]> {
   return fetchJSON<SeasonEntry[]>("seasons.json");
+}
+
+export function loadIngredients(): Promise<IngredientEntry[]> {
+  return fetchJSON<IngredientEntry[]>("ingredients.json");
 }

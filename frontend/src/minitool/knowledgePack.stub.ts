@@ -6,6 +6,7 @@ import type { WordEntry } from "@/services/quest/engine";
 import type {
   GrammarTopic,
   IdiomEntry,
+  IngredientEntry,
   PackIndex,
   RecipeEntry,
   SeasonEntry
@@ -45,5 +46,9 @@ export function loadRecipes(): Promise<RecipeEntry[]> {
 }
 
 export function loadSeasons(): Promise<SeasonEntry[]> {
+  return Promise.reject(unavailable());
+}
+
+export function loadIngredients(): Promise<IngredientEntry[]> {
   return Promise.reject(unavailable());
 }

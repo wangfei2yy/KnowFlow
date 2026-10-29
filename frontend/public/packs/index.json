@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-10-29T07:34:16.938Z",
+  "generatedAt": "2026-10-29T09:54:33.838Z",
   "packs": [
     {
       "id": "cet4",
@@ -52,6 +52,15 @@
       "count": 4,
       "bytes": 1520,
       "file": "seasons.json"
+    },
+    {
+      "id": "ingredients",
+      "kind": "docs",
+      "group": "life",
+      "title": "食材图鉴",
+      "count": 154,
+      "bytes": 50671,
+      "file": "ingredients.json"
     }
   ]
 }

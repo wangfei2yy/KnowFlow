@@ -3,7 +3,8 @@
  * 食谱库：24 道家常菜，按餐次筛选、搜索材料，详情可看步骤并加入任务清单。
  * 数据来自 data/食谱 的三份 PDF，由 scripts/build-life-packs.mjs 编译。
  */
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import {
   Search,
   X,
@@ -13,10 +14,19 @@ import {
   ListPlus,
   ChefHat
 } from "lucide-vue-next";
-import { loadRecipes, type MealKey, type RecipeEntry } from "@/services/knowledgePack";
+import {
+  loadRecipes,
+  loadIngredients,
+  type IngredientEntry,
+  type MealKey,
+  type RecipeEntry
+} from "@/services/knowledgePack";
+import { findIngredient } from "@/services/foodPack";
 import { useTaskStore } from "@/stores/taskStore";
 import { useAppStore } from "@/stores/appStore";
 
+const route = useRoute();
+const router = useRouter();
 const taskStore = useTaskStore();
 const appStore = useAppStore();
 
@@ -27,6 +37,8 @@ const keyword = ref("");
 const meal = ref<"" | MealKey>("");
 const active = ref<RecipeEntry | null>(null);
 const doneSteps = ref<Set<number>>(new Set());
+/** 图鉴里收录的食材，用来决定材料标签能不能点 */
+const ingredients = ref<IngredientEntry[]>([]);
 
 const MEALS: { key: "" | MealKey; label: string }[] = [
   { key: "", label: "全部" },
@@ -42,6 +54,9 @@ const MEAL_LABEL: Record<MealKey, string> = {
 };
 
 onMounted(async () => {
+  void loadIngredients()
+    .then((list) => (ingredients.value = list))
+    .catch(() => {});
   try {
     recipes.value = await loadRecipes();
   } catch (e) {
@@ -49,6 +64,7 @@ onMounted(async () => {
   } finally {
     loading.value = false;
   }
+  openFromQuery(typeof route.query.recipe === "string" ? route.query.recipe : undefined);
 });
 
 const filtered = computed(() => {
@@ -71,10 +87,36 @@ const mealCount = computed(() =>
   }))
 );
 
+function closeDetail() {
+  active.value = null;
+  if (route.query.recipe) router.replace({ path: "/kitchen", query: {} });
+}
+
 function open(r: RecipeEntry) {
   active.value = r;
   doneSteps.value = new Set();
 }
+
+/** 从食材图鉴跳过来：?recipe=<id> 直接展开这道菜 */
+function openFromQuery(id: string | undefined) {
+  if (!id) return;
+  const hit = recipes.value.find((r) => r.id === id);
+  if (hit) open(hit);
+}
+
+/** 材料在图鉴里有收录才可点，没收录的保持纯文本 */
+function knownMaterial(name: string): IngredientEntry | undefined {
+  return findIngredient(ingredients.value, name);
+}
+
+function gotoIngredient(name: string) {
+  router.push({ path: "/kitchen/ingredient", query: { focus: name } });
+}
+
+watch(
+  () => route.query.recipe,
+  (v) => openFromQuery(typeof v === "string" ? v : undefined)
+);
 
 function toggleStep(idx: number) {
   const next = new Set(doneSteps.value);
@@ -194,7 +236,7 @@ async function addToTasks(r: RecipeEntry) {
           <button
             class="ml-auto rounded p-1 text-slate-400 hover:bg-slate-100"
             aria-label="关闭"
-            @click="active = null"
+            @click="closeDetail"
           >
             <X :size="18" />
           </button>
@@ -203,13 +245,22 @@ async function addToTasks(r: RecipeEntry) {
         <div v-if="active.materials.length" class="mt-4">
           <div class="mb-2 text-xs font-medium text-slate-600">材料</div>
           <div class="flex flex-wrap gap-1.5">
-            <span
-              v-for="m in active.materials"
-              :key="m"
-              class="rounded-lg bg-slate-50 px-2 py-1 text-xs text-slate-600"
-            >
-              {{ m }}
-            </span>
+            <template v-for="m in active.materials" :key="m">
+              <button
+                v-if="knownMaterial(m)"
+                class="rounded-lg bg-slate-50 px-2 py-1 text-xs text-slate-600 transition hover:bg-brand-50 hover:text-brand-700"
+                :title="`看看「${m}」的营养与功效`"
+                @click="gotoIngredient(m)"
+              >
+                {{ m }}
+              </button>
+              <span
+                v-else
+                class="rounded-lg bg-slate-50 px-2 py-1 text-xs text-slate-400"
+              >
+                {{ m }}
+              </span>
+            </template>
           </div>
         </div>
 

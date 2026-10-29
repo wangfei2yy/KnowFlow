@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { useRoute } from "vue-router";
-import { ChefHat, Sprout, CalendarRange } from "lucide-vue-next";
+import { ChefHat, Sprout, CalendarRange, Carrot } from "lucide-vue-next";
 
 const route = useRoute();
 
 const tabs = [
   { path: "/kitchen", label: "食谱", icon: ChefHat },
   { path: "/kitchen/season", label: "时令", icon: Sprout },
-  { path: "/kitchen/plan", label: "计划", icon: CalendarRange }
+  { path: "/kitchen/plan", label: "计划", icon: CalendarRange },
+  { path: "/kitchen/ingredient", label: "食材", icon: Carrot }
 ];
 
 function isActive(path: string): boolean {
