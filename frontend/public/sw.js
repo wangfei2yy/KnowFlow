@@ -63,7 +63,12 @@ async function shellAge() {
 
 /** 拉网络并把 HTML 写回缓存 */
 function fetchAndCacheShell(req) {
-  return fetch(req, { cache: "no-cache" }).then((res) => {
+  // 关键：不能直接 fetch(req)。SW 内部 fetch 一个 mode=navigate 的同源请求，
+  // 会再次触发本 SW 的 fetch 事件 → 又走 resolveNavigation → 又 fetch，无限递归
+  // （Edge 上尤其明显，表现为页面一直加载不出来）。重新构造一个普通 Request，
+  // mode 默认是 "cors"，就不会命中导航分支。
+  const plain = new Request(req.url, { cache: "no-cache", headers: req.headers });
+  return fetch(plain).then((res) => {
     if (res.ok) {
       const copy = res.clone();
       caches
@@ -92,7 +97,7 @@ async function resolveNavigation(req) {
     const res = (await Promise.race([network, timeout])) || cached;
     if (res) return res;
     // 网络和缓存都没有，再给一次网络（至少把错误暴露出来）
-    return fetch(req).catch(() => Response.error());
+    return fetch(new Request(req.url)).catch(() => Response.error());
   }
 
   // 壳还新鲜：先给缓存，同时后台更新（下次打开就是最新）
@@ -121,7 +126,7 @@ self.addEventListener("fetch", (event) => {
       caches.match(req, { ignoreSearch: true }).then(
         (hit) =>
           hit ||
-          fetch(req)
+          fetch(new Request(req.url))
             .then((res) => {
               if (res.ok) {
                 const copy = res.clone();
@@ -141,7 +146,7 @@ self.addEventListener("fetch", (event) => {
       caches.match(req, { ignoreSearch: true }).then(
         (hit) =>
           hit ||
-          fetch(req)
+          fetch(new Request(req.url))
             .then((res) => {
               if (res.ok) {
                 const copy = res.clone();
