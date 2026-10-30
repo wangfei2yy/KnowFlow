@@ -4,6 +4,9 @@
  */
 import {
   commonMaterials,
+  findTodayMealTask,
+  isSameMealTask,
+  todayKey,
   groupShopping,
   loadChecked,
   loadLocks,
@@ -138,4 +141,20 @@ ok(Object.keys(loadLocks(w1)).length === 0, "清空后应为空");
 ok(slotKeyOf(2, "dinner") === "2:dinner", "格子 key 格式");
 console.log("9) 计划锁定按周隔离 OK");
 
-console.log("\n✅ 饮食逻辑 9 组断言全部通过");
+// ---------- 10) 今日三餐任务防重复 ----------
+const tasks = [
+  { id: "t1", title: "今日三餐：A / B / C", description: "旧内容", dueDate: "2026-10-30" },
+  { id: "t2", title: "今日三餐：D / E", description: "昨天", dueDate: "2026-10-29" },
+  { id: "t3", title: "买牛奶", dueDate: "2026-10-30" }
+];
+const hit = findTodayMealTask(tasks, "2026-10-30");
+ok(hit?.id === "t1", `应命中今天那条，实际 ${hit?.id}`);
+ok(findTodayMealTask(tasks, "2026-11-01") === null, "换一天不该命中任何一条");
+ok(findTodayMealTask([], "2026-10-30") === null, "没有任务时返回 null");
+ok(findTodayMealTask([{ id: "x", title: "今日三餐：A", dueDate: undefined }], "2026-10-30") === null, "没有 dueDate 的不算今天");
+ok(isSameMealTask(tasks[0], "今日三餐：A / B / C", "旧内容"), "标题与描述都相同 → 内容一致");
+ok(!isSameMealTask(tasks[0], "今日三餐：A / B / F", "旧内容"), "菜单变了 → 内容不一致（应更新）");
+ok(todayKey(new Date(2026, 9, 30)) === "2026-10-30", `todayKey 应补零，实际 ${todayKey(new Date(2026, 9, 30))}`);
+console.log("10) 今日三餐任务：同一天只认一条，菜单变了才更新");
+
+console.log("\n✅ 饮食逻辑 10 组断言全部通过");

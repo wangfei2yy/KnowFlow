@@ -22,13 +22,16 @@ import {
 import { loadRecipes, loadIngredients, type IngredientEntry, type MealKey, type RecipeEntry } from "@/services/knowledgePack";
 import { CATEGORY_LABEL, categorizeIngredients } from "@/services/foodPack";
 import {
+  findTodayMealTask,
   groupShopping,
+  isSameMealTask,
   loadChecked,
   loadLocks,
   saveChecked,
   saveLocks,
   shoppingText,
   slotKeyOf,
+  todayKey,
   type LockMap
 } from "@/services/kitchenService";
 import { useTaskStore } from "@/stores/taskStore";
@@ -96,6 +99,8 @@ const MEAL_LABEL: Record<MealKey, string> = {
 const WEEK = ["日", "一", "二", "三", "四", "五", "六"];
 
 onMounted(async () => {
+  // 必须先把任务读出来，否则「今天是否已加过」永远判断为没加过，就会重复创建
+  void taskStore.load().catch(() => {});
   // 食材图鉴加载失败不影响计划生成，只是少了「食材构成」这一块
   void loadIngredients()
     .then((list) => (ingredients.value = list))
@@ -262,6 +267,9 @@ function toggleLock(dayIndex: number, mealKey: MealKey) {
   saveLocks(next);
 }
 
+/** 今天那条「今日三餐」任务（同一天只允许有一条） */
+const todayTask = computed(() => findTodayMealTask(taskStore.tasks, todayKey()));
+
 async function addTodayToTasks() {
   const today = plan.value[0];
   if (!today) return;
@@ -269,11 +277,25 @@ async function addTodayToTasks() {
   const detail = today.meals
     .map((m) => `${MEAL_LABEL[m.key]}餐 · ${m.recipe.name}\n${m.recipe.steps.map((s, i) => `  ${i + 1}. ${s}`).join("\n")}`)
     .join("\n\n");
+  const title = `今日三餐：${names}`;
   try {
+    const existing = todayTask.value;
+    if (existing) {
+      // 同一天只留一条：菜单没变就只提示，变了就覆盖内容（而不是再建一条）
+      if (isSameMealTask(existing, title, detail)) {
+        appStore.showToast("今天的三餐已经在任务清单里了", "info");
+        return;
+      }
+      await taskStore.update(existing.id, { title, description: detail });
+      appStore.showToast("今日任务已同步为当前菜单", "success");
+      return;
+    }
     await taskStore.create({
-      title: `今日三餐：${names}`,
+      title,
       description: detail,
-      priority: "medium"
+      priority: "medium",
+      // dueDate 是「同一天」的判据，也是任务清单里能看出来的日期
+      dueDate: todayKey()
     });
     appStore.showToast("今日菜单已加入任务清单", "success");
   } catch (e) {
@@ -346,8 +368,13 @@ async function addTodayToTasks() {
             （{{ noMaterialCount }} 道菜未列材料）
           </span>
         </span>
-        <button class="ml-auto btn-secondary" @click="addTodayToTasks">
-          <ListPlus :size="14" /> 今日菜单加入任务
+        <button
+          class="ml-auto btn-secondary"
+          :title="todayTask ? '今天已经加过，点了会用当前菜单覆盖那一条' : '把今天三餐建成一条任务'"
+          @click="addTodayToTasks"
+        >
+          <ListPlus :size="14" />
+          {{ todayTask ? "同步今日菜单" : "今日菜单加入任务" }}
         </button>
       </div>
 

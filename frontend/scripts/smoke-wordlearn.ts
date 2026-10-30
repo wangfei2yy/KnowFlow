@@ -14,6 +14,9 @@ import {
   passLine,
   saveDrillResult,
   loadDrillProgress,
+  clearDrillSession,
+  loadDrillSession,
+  saveDrillSession,
   startDrill,
   summarizeDrill,
   type LevelMap
@@ -160,9 +163,60 @@ const full = summarizeDrill(all, 4424);
 ok(full.cleared === 89 && full.next === 89, "全过时 next 等于关卡数");
 ok(full.wordsDone === 4424, `全过应覆盖 4424 词，实际 ${full.wordsDone}`);
 
+// ---------------- 10) 进行中的一关：退出后可接着做 ----------------
+store.delete("knowflow.words.drill.session");
+let live = startDrill(l0, () => 0.42);
+// 答 3 题，第 4 题只答不推进（模拟「答完这题就退出」）
+for (let i = 0; i < 3; i++) {
+  const q = currentDrillQuestion(live)!;
+  live = nextDrill(answerDrill(live, i === 0 ? q.options.find((o) => o !== q.answer)! : q.answer));
+}
+const q4 = currentDrillQuestion(live)!;
+live = answerDrill(live, q4.answer);
+saveDrillSession("cet4", 0, live);
+
+const restored = loadDrillSession("cet4", 0);
+ok(!!restored, "存档应能读回");
+ok(restored!.index === 3, `应回到第 4 题（index 3），实际 ${restored!.index}`);
+ok(restored!.answered === true && restored!.picked === q4.answer, "「已作答未推进」的状态也要恢复");
+ok(restored!.questions.length === 50, "题目数量完整");
+// 题目内容必须和原来一致，否则「续做」是假的
+ok(
+  restored!.questions.every((q, i) => q.word === live.questions[i].word && q.answer === live.questions[i].answer),
+  "题目内容应逐条一致（只记题号会导致换卷子）"
+);
+ok(restored!.correct === 3 && restored!.wrong === 1, `得分与错词数应保持（3 对 1 错），实际 ${restored!.correct}/${restored!.wrong}`);
+
+// 不同关卡互不影响
+saveDrillSession("cet4", 1, startDrill(levelSlice(words, 1), () => 0.3));
+ok(!!loadDrillSession("cet4", 1), "第 2 关应有自己的存档");
+ok(loadDrillSession("cet4", 0)!.index === 3, "存第 2 关不应冲掉第 1 关");
+// 不同词库互不影响
+ok(loadDrillSession("cet6", 0) === null, "别的词库不应读到");
+
+// 清掉后读不到
+clearDrillSession("cet4", 0);
+ok(loadDrillSession("cet4", 0) === null, "清除后应读不到");
+ok(!!loadDrillSession("cet4", 1), "清第 1 关不应影响第 2 关");
+
+// 过期（8 天前）当没有
+const stale = startDrill(l0, () => 0.11);
+saveDrillSession("cet4", 2, stale);
+const rawSaves = JSON.parse(store.get("knowflow.words.drill.session")!);
+rawSaves.cet4["2"].savedAt = new Date(Date.now() - 8 * 24 * 3600 * 1000).toISOString();
+store.set("knowflow.words.drill.session", JSON.stringify(rawSaves));
+ok(loadDrillSession("cet4", 2) === null, "超过 7 天的存档应作废");
+
+// 已做完的存档不恢复
+let done = startDrill(l0, () => 0.7);
+for (let i = 0; i < 50; i++) done = nextDrill(answerDrill(done, currentDrillQuestion(done)!.answer));
+saveDrillSession("cet4", 3, done);
+ok(loadDrillSession("cet4", 3) === null, "做完的那一关不该被当存档恢复");
+console.log("10) 背单词存档：续做 / 隔离 / 过期 / 已完成 均正确");
+
 if (failed.length) {
   console.error("\n❌ 背单词逻辑冒烟失败：");
   for (const f of failed) console.error("  •", f);
   process.exit(1);
 }
-console.log(`\n✅ 背单词逻辑 9 组断言全部通过（${pass} 条）`);
+console.log(`\n✅ 背单词逻辑 10 组断言全部通过（${pass} 条）`);

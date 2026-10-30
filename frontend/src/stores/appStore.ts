@@ -5,6 +5,15 @@ export type ThemeMode = "light" | "dark" | "system";
 
 const THEME_KEY = "knowflow.theme";
 
+/**
+ * 提示条自动消失时间。
+ * 之前 showToast 只把 visible 置 true，没有任何定时器 —— 提示会一直挂在屏幕上，
+ * 只能手动点 ×，所以「加入计划成功」那种提示看起来永远关不掉。
+ * 1.8s 够读完一句话，又不至于挡着下面的操作。
+ */
+const TOAST_MS = 1800;
+let toastTimer: number | undefined;
+
 function loadTheme(): ThemeMode {
   try {
     const v = localStorage.getItem(THEME_KEY);
@@ -44,6 +53,12 @@ export const useAppStore = defineStore("app", {
   actions: {
     showToast(message: string, type: ToastType = "info") {
       this.toast = { visible: true, message, type };
+      if (typeof window === "undefined") return;
+      // 新提示顶掉旧提示时，必须清掉旧定时器，否则它会把新提示提前关掉
+      window.clearTimeout(toastTimer);
+      toastTimer = window.setTimeout(() => {
+        this.toast.visible = false;
+      }, TOAST_MS);
     },
     hideToast() {
       this.toast.visible = false;

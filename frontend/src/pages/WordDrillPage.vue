@@ -18,9 +18,12 @@ import {
   levelCount,
   levelRange,
   levelSlice,
+  clearDrillSession,
+  loadDrillSession,
   nextDrill,
   passLine,
   saveDrillResult,
+  saveDrillSession,
   startDrill,
   type DrillSession
 } from "@/services/wordLearn";
@@ -101,10 +104,22 @@ async function load() {
   }
 }
 
+/**
+ * 开这一关：有存档就接着做，没有才从头开始。
+ * 存的是整局 session，所以「第几题」和题目内容都对得上。
+ */
 function begin() {
   clearTimer();
   settled.value = false;
   banked.value = 0;
+
+  const saved = loadDrillSession(packId.value, level.value);
+  if (saved) {
+    session.value = saved;
+    const done = saved.correct + saved.wrong;
+    if (done > 0) appStore.showToast(`已回到第 ${saved.index + 1} 题（已完成 ${done} / ${saved.questions.length}）`, "info");
+    return;
+  }
   session.value = startDrill(slice.value);
 }
 
@@ -114,6 +129,7 @@ function choose(option: string) {
   const current = currentDrillQuestion(s);
   if (!current) return;
   session.value = answerDrill(s, option);
+  saveDrillSession(packId.value, level.value, session.value);
   // 答对给 750ms 看清绿框就走，答错停住让人读完整释义
   if (option === current.answer) timer = window.setTimeout(advance, 750);
 }
@@ -124,16 +140,21 @@ function advance() {
   if (!s) return;
   const next = nextDrill(s);
   session.value = next;
+  // 结束后存档就没意义了，结算时清掉；否则每次切题都更新
   if (next.finished) settle(next);
+  else saveDrillSession(packId.value, level.value, next);
 }
 
 function settle(s: DrillSession) {
   if (settled.value) return;
   settled.value = true;
   saveDrillResult(packId.value, level.value, s.correct, s.questions.length);
+  // 这一关做完了，进行中的存档作废，下次进来从第 1 题开始（重做本关）
+  clearDrillSession(packId.value, level.value);
 }
 
 function retry() {
+  clearDrillSession(packId.value, level.value);
   begin();
 }
 

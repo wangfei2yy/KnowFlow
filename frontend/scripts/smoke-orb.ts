@@ -14,6 +14,7 @@ import {
   timeText,
   orbAccuracy,
   fieldRadius,
+  moveSpeed,
   spellSimilarity,
   ORB,
   TIERS,
@@ -146,41 +147,31 @@ jump = stepOrb(jump, 5, { x: 1, y: 0 }); // 切标签回来 dt=5s
 const moved = Math.hypot(jump.player.x - posBefore.x, jump.player.y - posBefore.y);
 ok(moved < 30, `dt 应被夹到 50ms，5 秒只该走一小步，实际 ${moved.toFixed(1)}`);
 
-// ---------------- 9) 相机与层级 ----------------
-ok(cameraScale(40) === 1, "r=40 时相机不缩放");
-ok(Math.abs(cameraScale(80) - 0.5) < 1e-9, "r=80 时相机 0.5");
-ok(cameraScale(400) === 0.35, "相机下限 0.35");
-ok(cameraScale(100000) === 0.35, "再大也不会低于下限");
-ok(tierOf(39) === 0 && tierOf(40) === 0, "40 及以下都是村庄");
-ok(tierOf(41) === 0, "41 仍是村庄（阈值 80 才升级）");
-ok(tierOf(79) === 0 && tierOf(80) === 1, "80 进城镇");
-ok(tierOf(81) === 1, "81 仍是城镇");
-ok(tierOf(140) === 2, "140 进城市");
-ok(tierOf(600) === TIERS.length - 1, "600 到太阳系");
-ok(tierOf(99999) === TIERS.length - 1, "超出上限停在最高层");
-ok(fieldRadius(40) < fieldRadius(600), "球越大，可吃区域越大");
-ok(moveSpeedDecreasing(), "半径越大速度越慢");
-function moveSpeedDecreasing() {
-  let prev = Infinity;
-  for (const r of [40, 100, 200, 400, 600]) {
-    const g = (() => {
-      // 通过引擎位移近似速度：同一 dt 下走得越远越快
-      const st = startOrb(createOrbGame({ words, seed: 1 }));
-      const moved = stepOrb({ ...st, player: { ...st.player, r } }, 0.05, { x: 1, y: 0 });
-      return Math.hypot(moved.player.x - 0, moved.player.y - 0);
-    })();
-    if (g > prev) return false;
-    prev = g;
-  }
-  return true;
+// ---------------- 9) 相机 / 层级 / 屏幕速度 ----------------
+ok(cameraScale(ORB.startR) === 1, "初始半径时相机不缩放");
+ok(Math.abs(cameraScale(ORB.maxR) - ORB.startR / ORB.maxR) < 1e-9, "到上限时相机按 startR/r 缩放");
+ok(cameraScale(100000) === 0.5, "相机下限 0.5");
+// 核心：球半径 × 缩放 ≈ 常数 → 玩家球在屏幕上不会越吃越大
+for (const r of [ORB.startR, 48, 60, ORB.maxR]) {
+  const screenR = r * cameraScale(r);
+  ok(Math.abs(screenR - ORB.startR) < 1e-9, `r=${r} 时屏幕半径应恒为 ${ORB.startR}，实际 ${screenR.toFixed(2)}`);
 }
 
-// 升级时记下层级切换时间
-let grow = startOrb(createOrbGame({ words, seed: 13 }));
-for (let i = 0; i < 12; i++) grow = eat(grow, true);
-ok(grow.player.r > 80, `连吃 12 个应超过 80，实际 ${grow.player.r.toFixed(1)}`);
-ok(grow.tier >= 1, "半径过 80 后层级应变");
-ok(grow.tierAt <= grow.elapsed, "层级切换时间应早于当前时间");
+// 层级改按「吃对个数」
+ok(tierOf(0) === 0 && tierOf(5) === 0, "0~5 个都是村庄");
+ok(tierOf(6) === 1, "吃对 6 个进城镇");
+ok(tierOf(13) === 1 && tierOf(14) === 2, "14 个进城市");
+ok(tierOf(80) === TIERS.length - 1, "80 个到太阳系");
+ok(tierOf(9999) === TIERS.length - 1, "超出上限停在最高层");
+
+ok(fieldRadius(40) < fieldRadius(600), "球越大，可吃区域越大");
+
+// 屏幕速度恒定：世界速度 × 缩放 = speedBase
+for (const r of [ORB.startR, ORB.maxR]) {
+  const screenSpeed = moveSpeed(r) * cameraScale(r);
+  ok(Math.abs(screenSpeed - ORB.speedBase) < 1e-6, `r=${r} 时屏幕速度应恒为 ${ORB.speedBase}，实际 ${screenSpeed.toFixed(2)}`);
+}
+ok(moveSpeed(ORB.maxR) > moveSpeed(ORB.startR), "球大了世界速度要更快（补偿视野缩小），不能更慢");
 
 // ---------------- 10) 干扰项是形近词 ----------------
 const sim = spellSimilarity("adapt", "adopt");
@@ -262,4 +253,28 @@ for (let i = 0; i < 9; i++) capped = eat(capped, true);
 ok(capped.lives === LIFE_RULE.cap, `连对 9 个应停在 ${LIFE_RULE.cap} 格，实际 ${capped.lives}`);
 console.log("13) 回血：连对 3 个 +1，封顶", capped.lives, "格");
 
-console.log("\n✅ 球球引擎 13 组断言全部通过");
+// ---------------- 14) 半径封顶 + 一帧只吃一个 ----------------
+// 用户反馈「越吃越大，会一次吃到多个」：判定范围是 r×eatFactor，r 无上限时能吞掉半屏
+let growRun = startOrb(createOrbGame({ words, seed: 61, lives: 99 }));
+for (let i = 0; i < 20; i++) growRun = eat(growRun, true);
+ok(growRun.player.r === ORB.maxR, `连吃 20 个半径应停在上限 ${ORB.maxR}，实际 ${growRun.player.r.toFixed(1)}`);
+ok(
+  growRun.player.r * ORB.eatFactor < fieldRadius(growRun.player.r),
+  "判定半径必须远小于场地（否则会一口好几个）"
+);
+
+// 一帧只结算一个：把两个球都摆到玩家身上，推进一帧应该只少一个
+const two = startOrb(createOrbGame({ words, seed: 62, lives: 99 }));
+const [f1, f2] = two.foods;
+const stacked: OrbState = {
+  ...two,
+  player: { ...two.player, r: ORB.maxR, x: f1.x, y: f1.y, vx: 0, vy: 0 },
+  foods: two.foods.map((f, i) => (i === 0 || i === 1 ? { ...f, x: f1.x, y: f1.y } : f))
+};
+const afterOne = stepOrb(stacked, 1 / 60, { x: 0, y: 0 });
+const eatenCount = stacked.foods.length - afterOne.foods.length;
+ok(eatenCount <= 1, `一帧最多吃一个，实际吃了 ${eatenCount} 个（f2=${f2.word}）`);
+
+console.log("14) 半径封顶", ORB.maxR, "，一帧最多吃 1 个");
+
+console.log("\n✅ 球球引擎 14 组断言全部通过");

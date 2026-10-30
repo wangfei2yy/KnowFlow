@@ -211,3 +211,33 @@ export function saveLocks(locks: LockMap, week = weekKeyOf()): void {
 }
 
 export const slotKeyOf = (dayIndex: number, meal: string) => `${dayIndex}:${meal}`;
+
+// ---------------- 今日三餐任务（防重复加入） ----------------
+
+/** 本地时区的「今天」：YYYY-MM-DD，用作任务 dueDate */
+export function todayKey(now = new Date()): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}`;
+}
+
+export interface MealTaskLike {
+  id: string;
+  title: string;
+  description?: string;
+  dueDate?: string;
+}
+
+/**
+ * 找今天那条「今日三餐」任务。
+ *
+ * 为什么按 dueDate 认而不是按标题里的日期：标题是给用户看的，改文案就会失效；
+ * dueDate 是数据，稳定。标题只用来限定「这条是我们生成的」这个范围。
+ */
+export function findTodayMealTask<T extends MealTaskLike>(tasks: T[], dateKey: string): T | null {
+  return tasks.find((t) => t.title.startsWith("今日三餐") && t.dueDate === dateKey) ?? null;
+}
+
+/** 内容是否和已有任务完全一致（一致就不用写库，只提示一句） */
+export function isSameMealTask(task: MealTaskLike, title: string, description: string): boolean {
+  return task.title === title && (task.description ?? "") === description;
+}

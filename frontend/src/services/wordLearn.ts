@@ -203,3 +203,83 @@ export function summarizeDrill(map: LevelMap, totalWords: number, perLevel = DRI
   while (next < levels && map[next]?.passed) next += 1;
   return { levels, cleared, wordsDone, next };
 }
+
+// ---------------- 进行中的一关（退出后可接着做） ----------------
+
+/**
+ * 存的是整局 session（含题目与选项），不是「第几题」。
+ *
+ * 为什么不能只存 index：题目是每局随机生成的（buildQuestions 用了 Math.random），
+ * 只记到第 5 题的话，重进会重新出题，用户看到的是「第 5 题」但内容是新的 ——
+ * 那不叫续做，叫换了一套卷子还谎称号码没变。
+ */
+export interface DrillSave {
+  level: number;
+  session: DrillSession;
+  savedAt: string;
+}
+
+const SESSION_KEY = "knowflow.words.drill.session";
+/** 存档有效期：和闯关一致，7 天 */
+const DRILL_TTL = 7 * 24 * 60 * 60 * 1000;
+/** 每个词库最多留几关的记录，防止 localStorage 无限涨 */
+const MAX_SAVES = 5;
+
+type SaveMap = Record<string, Record<string, DrillSave>>;
+
+function readSaves(): SaveMap {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === "object" ? (parsed as SaveMap) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function loadDrillSession(packId: string, level: number): DrillSession | null {
+  const save = readSaves()[packId]?.[String(level)];
+  if (!save?.session) return null;
+  const at = new Date(save.savedAt).getTime();
+  // 过期或已做完的存档都当作没有，顺手清掉
+  if (!Number.isFinite(at) || Date.now() - at > DRILL_TTL || save.session.finished) {
+    clearDrillSession(packId, level);
+    return null;
+  }
+  // 题目空了（旧版本或写坏）也当没有，否则会卡在空白页
+  if (!Array.isArray(save.session.questions) || save.session.questions.length === 0) {
+    clearDrillSession(packId, level);
+    return null;
+  }
+  return save.session;
+}
+
+export function saveDrillSession(packId: string, level: number, session: DrillSession): void {
+  const all = readSaves();
+  const map = { ...(all[packId] ?? {}) };
+  map[String(level)] = { level, session, savedAt: new Date().toISOString() };
+  // 只留最近 MAX_SAVES 关：按保存时间倒序保留
+  const keys = Object.keys(map).sort(
+    (a, b) => new Date(map[b].savedAt).getTime() - new Date(map[a].savedAt).getTime()
+  );
+  for (const k of keys.slice(MAX_SAVES)) delete map[k];
+  all[packId] = map;
+  try {
+    localStorage.setItem(SESSION_KEY, JSON.stringify(all));
+  } catch {
+    /* 存不下就不存，不影响这一局 */
+  }
+}
+
+export function clearDrillSession(packId: string, level: number): void {
+  const all = readSaves();
+  const map = all[packId];
+  if (!map) return;
+  delete map[String(level)];
+  if (!Object.keys(map).length) delete all[packId];
+  try {
+    localStorage.setItem(SESSION_KEY, JSON.stringify(all));
+  } catch {
+    /* 忽略 */
+  }
+}

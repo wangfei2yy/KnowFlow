@@ -16,6 +16,12 @@ export type { WordEntry };
 export const ORB = {
   /** 初始半径 */
   startR: 40,
+  /**
+   * 半径上限。不封顶的话球会一直长：玩家半径决定「吃到」的判定范围（r × eatFactor），
+   * 长到 200 就能一次吞掉半屏的食物球 —— 用户反馈的「一次吃到多个」就是这么来的。
+   * 封顶后成长改由「背景缩小（视野变大）+ 层级」体现。
+   */
+  maxR: 76,
   /** 食物球半径（屏幕上要放得下英文单词，太小会看不清） */
   foodR: 27,
   /** 场上食物球数量：之前 14 个太密，选项一多反而难找 */
@@ -26,9 +32,12 @@ export const ORB = {
   shrink: 0.88,
   /** 半径下限，防止缩没 */
   minR: 24,
-  /** 半径 r 时的移动速度 = speedBase / (1 + r / speedDiv) */
+  /**
+   * 屏幕上的移动速度（px/秒）。世界速度 = speedBase / cameraScale(r)，
+   * 所以不管球多大，看起来的移动快慢都一样。
+   * 原来写成 speedBase/(1+r/160)，球一大就越来越慢（r=76 时只剩 68%），是另一个反馈点。
+   */
   speedBase: 250,
-  speedDiv: 160,
   /** 初始命（上限见 games/lives.ts 的 LIFE_RULE：连对 3 个回 1 格，最多 5 格） */
   lives: 3,
   /** 时长（秒） */
@@ -113,29 +122,38 @@ export interface OrbConfig {
   seed?: number;
 }
 
-/** 环境层级：球越大，世界越大 */
-export const TIERS: { minR: number; name: string; hint: string }[] = [
-  { minR: 40, name: "村庄", hint: "草地上的小地方" },
-  { minR: 80, name: "城镇", hint: "房子多了起来" },
-  { minR: 140, name: "城市", hint: "高楼与天桥" },
-  { minR: 220, name: "省", hint: "山川与河流" },
-  { minR: 320, name: "国家", hint: "整个版图" },
-  { minR: 450, name: "地球", hint: "看见大气层了" },
-  { minR: 600, name: "太阳系", hint: "脚下是星辰" }
+/**
+ * 环境层级：按「吃对个数」升级，不再按半径。
+ *
+ * 半径封顶后（maxR）用半径做阈值会让玩家永远停在第一层，
+ * 而层级的本意是「进度感」，用吃对个数更准。
+ */
+export const TIERS: { minCorrect: number; name: string; hint: string }[] = [
+  { minCorrect: 0, name: "村庄", hint: "草地上的小地方" },
+  { minCorrect: 6, name: "城镇", hint: "房子多了起来" },
+  { minCorrect: 14, name: "城市", hint: "高楼与天桥" },
+  { minCorrect: 24, name: "省", hint: "山川与河流" },
+  { minCorrect: 38, name: "国家", hint: "整个版图" },
+  { minCorrect: 56, name: "地球", hint: "看见大气层了" },
+  { minCorrect: 80, name: "太阳系", hint: "脚下是星辰" }
 ];
 
-export function tierOf(r: number): number {
+export function tierOf(correct: number): number {
   let idx = 0;
   for (let i = 0; i < TIERS.length; i++) {
-    if (r >= TIERS[i].minR) idx = i;
+    if (correct >= TIERS[i].minCorrect) idx = i;
   }
   return idx;
 }
 
-/** 相机缩放：球越大视野越远，0.35 封底防止世界缩成芝麻 */
+/**
+ * 相机缩放：球越大，背景越远（作为参照物同比例缩小），
+ * 而「球半径 × 缩放」恰好是个常数 —— 所以玩家球在屏幕上一直那么大，
+ * 食物球也是（渲染层还有 24px 下限兜底）。
+ */
 export function cameraScale(r: number): number {
   const s = ORB.startR / Math.max(ORB.minR, r);
-  return Math.min(1, Math.max(0.35, s));
+  return Math.min(1, Math.max(0.5, s));
 }
 
 /** 场上食物分布半径：随球长大一起外扩，避免"球大了却没东西吃" */
@@ -144,9 +162,12 @@ export function fieldRadius(r: number): number {
   return 450 + r * 1.7;
 }
 
-/** 当前半径下的移动速度 */
+/**
+ * 世界坐标里的移动速度。
+ * 除以 cameraScale 之后，屏幕上的速度恒为 ORB.speedBase —— 球变大不会变慢。
+ */
 export function moveSpeed(r: number): number {
-  return ORB.speedBase / (1 + r / ORB.speedDiv);
+  return ORB.speedBase / cameraScale(r);
 }
 
 // ---------------- 随机数 ----------------
@@ -296,7 +317,7 @@ export function createOrbGame(config: OrbConfig): OrbState {
     wrongWords: [],
     elapsed: 0,
     duration,
-    tier: tierOf(ORB.startR),
+    tier: tierOf(0),
     tierAt: 0,
     shake: 0,
     hitSeq: 0,
@@ -429,7 +450,7 @@ function resolveEat(state: OrbState, food: Food): OrbState {
     state.score += 10 + Math.min(10, (state.combo - 1) * 2);
     // 连对 3 个回一格（上限 5）：血条要有正反馈，不然只能一路挨打
     state.lives = healForStreak(state.lives, state.maxLives, state.combo);
-    state.player.r = Math.max(ORB.minR, state.player.r * ORB.grow);
+    state.player.r = Math.min(ORB.maxR, Math.max(ORB.minR, state.player.r * ORB.grow));
 
     state.orderPos = (state.orderPos + 1) % Math.max(1, state.order.length);
     state.target = nextTarget(state);
@@ -457,7 +478,7 @@ function resolveEat(state: OrbState, food: Food): OrbState {
 
 /** 每帧收尾：更新层级（升级时记时间用于过渡） */
 function finishStep(state: OrbState): OrbState {
-  const tier = tierOf(state.player.r);
+  const tier = tierOf(state.correct);
   if (tier !== state.tier) {
     return { ...state, tier, tierAt: state.elapsed };
   }

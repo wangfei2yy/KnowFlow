@@ -370,8 +370,14 @@ const bestTierName = computed(() => (result.value ? tierName(result.value.tier) 
 
       <!-- 顶部 HUD -->
       <div class="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between p-3">
-        <div class="rounded-lg bg-slate-900/70 px-2.5 py-1 text-sm font-semibold tabular-nums text-white">
-          {{ untimed ? "练习" : timeText(hud.time) }}
+        <div class="flex flex-col items-start gap-1">
+          <div class="rounded-lg bg-slate-900/70 px-2.5 py-1 text-sm font-semibold tabular-nums text-white">
+            {{ untimed ? "练习" : timeText(hud.time) }}
+          </div>
+          <!-- 层级：半径封顶后，进度感靠它体现（越吃背景越远） -->
+          <span class="rounded-md bg-white/85 px-2 py-0.5 text-[11px] text-slate-500">
+            {{ tierLabel }}
+          </span>
         </div>
         <div class="flex items-center gap-2">
           <span class="flex items-center gap-1 rounded-lg bg-white/85 px-2 py-1 text-rose-500">
