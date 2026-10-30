@@ -96,6 +96,23 @@ export function createOrbRenderer(canvas: HTMLCanvasElement): OrbRenderer {
   let fromTier = 0;
   let transition = 1;
 
+  /**
+   * 能不能开离屏 canvas 做缓存。
+   * node 单测（假 context）里没有 document，自动退回「直接画」的老路 ——
+   * 测试要验证的是文字有没有被截断，不是性能。
+   */
+  const CAN_OFFSCREEN =
+    typeof document !== "undefined" && typeof document.createElement === "function";
+
+  /**
+   * 食物球精灵缓存：球 + 英文单词渲染一次，之后每帧只 drawImage。
+   *
+   * 这是这一轮最重要的性能改动：原来每帧要给 10 个球各画 1~3 次 fillText，
+   * 加上背景装饰几十次，一帧七八十次文字绘制；文字（尤其折行后）是 canvas 里最贵的一档。
+   * 缓存后每帧只剩玩家球上的中文要画。
+   */
+  const sprites = new Map<string, HTMLCanvasElement>();
+
   function resize(w: number, h: number) {
     width = Math.max(1, w);
     height = Math.max(1, h);
@@ -106,6 +123,9 @@ export function createOrbRenderer(canvas: HTMLCanvasElement): OrbRenderer {
     canvas.height = Math.round(height * dpr);
     canvas.style.width = `${width}px`;
     canvas.style.height = `${height}px`;
+    // dpr 变了，精灵与渐变都得重做
+    sprites.clear();
+    gradKey = "";
   }
 
   function burst(x: number, y: number, color: string, count = 8) {
@@ -181,6 +201,62 @@ export function createOrbRenderer(canvas: HTMLCanvasElement): OrbRenderer {
     return next;
   }
 
+  /** 画一个食物球（球体 + 英文），精灵生成与无 DOM 兜底共用这一份 */
+  function paintFoodBall(
+    g: CanvasRenderingContext2D,
+    r: number,
+    word: string,
+    cx: number,
+    cy: number
+  ) {
+    g.beginPath();
+    g.arc(cx, cy, r, 0, Math.PI * 2);
+    g.fillStyle = "#ffffff";
+    g.fill();
+    g.lineWidth = 1.5;
+    g.strokeStyle = "#cbd5e1";
+    g.stroke();
+
+    const { lines, size } = layoutCached(word, r * 1.72, Math.min(20, Math.max(11, r * 0.62)));
+    g.font = `600 ${size}px ${FONT_STACK}`;
+    g.fillStyle = "#1e293b";
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    if (lines.length === 1) {
+      g.fillText(lines[0], cx, cy + 0.5);
+    } else {
+      const lh = size * 1.12;
+      lines.forEach((line, i) => g.fillText(line, cx, cy - lh / 2 + i * lh + 0.5));
+    }
+  }
+
+  /** 食物球精灵：同一个词 + 同一个屏幕半径只渲染一次 */
+  function foodSprite(word: string, r: number): HTMLCanvasElement | null {
+    if (!CAN_OFFSCREEN) return null;
+    const key = `${word}|${Math.round(r)}|${dpr}`;
+    const hit = sprites.get(key);
+    if (hit) return hit;
+
+    const size = Math.ceil(r * 2 + 4);
+    let off: HTMLCanvasElement;
+    try {
+      off = document.createElement("canvas");
+    } catch {
+      return null;
+    }
+    off.width = Math.max(1, Math.ceil(size * dpr));
+    off.height = Math.max(1, Math.ceil(size * dpr));
+    const g = off.getContext("2d");
+    if (!g) return null;
+    g.scale(dpr, dpr);
+    paintFoodBall(g, r, word, size / 2, size / 2);
+
+    // 一局里词最多十几个、半径两三档，240 已经非常宽裕
+    if (sprites.size > 240) sprites.clear();
+    sprites.set(key, off);
+    return off;
+  }
+
   /** 中文按字折行，最多两行 */
   function wrapLines(text: string, maxChars: number, maxLines: number): string[] {
     const lines: string[] = [];
@@ -208,15 +284,13 @@ export function createOrbRenderer(canvas: HTMLCanvasElement): OrbRenderer {
     const gy1 = Math.ceil(bottom / cell);
 
     /**
-     * 相机缩小后，同样一屏要扫的格子数按 1/scale² 增长（scale 0.5 时是 4 倍）。
-     * 每格一次 emoji fillText，在低端手机上就会把帧率打下去 ——
-     * 而帧率正是「球长大后感觉变慢」的元凶之一（引擎侧已改成固定步长兜底，
-     * 这里再把绘制量摁住，双保险）。
-     * 抽稀而不是缩小视野：位置还是那些位置（同一套哈希），只是隔一格画一个，
-     * 观感是「装饰变稀」，不会跳来跳去。
+     * 相机拉远后，同样一屏要扫的格子数按 1/scale² 增长。
+     * 每格一次 emoji fillText，在低端手机上就会把帧率打下去。
+     * 超过 26 格就隔格抽样：位置还是那些位置（同一套哈希），
+     * 观感是「装饰变稀」，不会跳来跳去，屏幕上的装饰密度也基本恒定。
      */
     const cells = (gx1 - gx0 + 1) * (gy1 - gy0 + 1);
-    const skip = cells > 40 ? Math.ceil(Math.sqrt(cells / 40)) : 1;
+    const skip = cells > 26 ? Math.ceil(Math.sqrt(cells / 26)) : 1;
 
     const size = Math.max(11, Math.min(34, cell * scale * 0.32));
     ctx.font = `${size}px ${FONT_STACK}`;
@@ -251,25 +325,27 @@ export function createOrbRenderer(canvas: HTMLCanvasElement): OrbRenderer {
     const r = Math.max(24, f.r * scale);
     if (sx < -r * 3 || sy < -r * 3 || sx > width + r * 3 || sy > height + r * 3) return;
 
-    ctx.beginPath();
-    ctx.arc(sx, sy, r, 0, Math.PI * 2);
-    ctx.fillStyle = "#ffffff";
-    ctx.fill();
-    ctx.lineWidth = 1.5;
-    ctx.strokeStyle = "#cbd5e1";
-    ctx.stroke();
-
-    const { lines, size } = layoutCached(f.word, r * 1.72, Math.min(20, Math.max(11, r * 0.62)));
-    ctx.font = fontOf(size);
-    ctx.fillStyle = "#1e293b";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    if (lines.length === 1) {
-      ctx.fillText(lines[0], sx, sy + 0.5);
-    } else {
-      const lh = size * 1.12;
-      lines.forEach((line, i) => ctx.fillText(line, sx, sy - lh / 2 + i * lh + 0.5));
+    const sprite = foodSprite(f.word, r);
+    if (sprite) {
+      const cssSize = sprite.width / dpr;
+      ctx.drawImage(sprite, sx - cssSize / 2, sy - cssSize / 2, cssSize, cssSize);
+      return;
     }
+    paintFoodBall(ctx, r, f.word, sx, sy);
+  }
+
+  /** 玩家球的径向渐变只跟半径/中心有关，缓存起来别每帧重建 */
+  let gradKey = "";
+  let gradCache: CanvasGradient | null = null;
+  function playerGradient(r: number, cx: number, cy: number): CanvasGradient {
+    const key = `${Math.round(r)}|${Math.round(cx)}|${Math.round(cy)}|${dpr}`;
+    if (gradKey === key && gradCache) return gradCache;
+    const g = ctx.createRadialGradient(cx - r * 0.3, cy - r * 0.35, r * 0.15, cx, cy, r);
+    g.addColorStop(0, "#8aa4ff");
+    g.addColorStop(1, "#4f6ef7");
+    gradKey = key;
+    gradCache = g;
+    return g;
   }
 
   function drawPlayer(state: OrbState, scale: number, halfW: number, halfH: number) {
@@ -277,12 +353,9 @@ export function createOrbRenderer(canvas: HTMLCanvasElement): OrbRenderer {
     const cx = halfW;
     const cy = halfH;
 
-    const grad = ctx.createRadialGradient(cx - r * 0.3, cy - r * 0.35, r * 0.15, cx, cy, r);
-    grad.addColorStop(0, "#8aa4ff");
-    grad.addColorStop(1, "#4f6ef7");
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.fillStyle = grad;
+    ctx.fillStyle = playerGradient(r, cx, cy);
     ctx.fill();
     ctx.lineWidth = 2;
     ctx.strokeStyle = "rgba(255,255,255,0.85)";

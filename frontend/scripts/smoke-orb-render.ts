@@ -206,4 +206,29 @@ console.log("  绘制中文:", labelText || "（无）");
 
 renderer.destroy();
 
+// ---------------- 绘制量预算（用户问「吃到一定程度会不会很卡」）----------------
+// node 里没有 document，走的是「直接画」兜底路径 —— 正好等于改缓存前的老开销，
+// 可以拿来当基准：浏览器里开了精灵缓存后，食物球一次 fillText 都不再发生。
+function fillTextPerFrame(r: number): number {
+  const t = fakeCtx();
+  const c = {
+    width: 0,
+    height: 0,
+    style: {} as Record<string, string>,
+    getContext: () => t.ctx
+  };
+  const rd = createOrbRenderer(c as unknown as HTMLCanvasElement);
+  rd.resize(390, 520);
+  const g = startOrb(createOrbGame({ words, seed: 5 }));
+  rd.draw({ ...g, player: { ...g.player, r } }, 1 / 60);
+  const n = t.calls.fillText ?? 0;
+  rd.destroy();
+  return n;
+}
+const textAtStart = fillTextPerFrame(ORB.startR);
+const textAtMax = fillTextPerFrame(ORB.maxR);
+console.log(`  老路径每帧 fillText：r=40 → ${textAtStart} 次，r=76 → ${textAtMax} 次（浏览器里开了精灵缓存后食物球恒为 0 次）`);
+// 视野只放大到 1.8 倍，文字绘制量不该成倍上涨
+ok(textAtMax < textAtStart * 2, `满级时的文字绘制量应 <2 倍（实际 ${textAtMax} vs ${textAtStart}）`);
+
 console.log("\n✅ 渲染层冒烟通过（2x 画布 / 6 级背景 / 抖动 / 粒子 / 空场 / 零尺寸 / 文字可读性）");

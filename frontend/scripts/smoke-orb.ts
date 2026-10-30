@@ -17,6 +17,7 @@ import {
   moveSpeed,
   spellSimilarity,
   difficultyOf,
+  CAMERA_MIN,
   screenSpeed,
   DIFFICULTIES,
   ORB,
@@ -153,13 +154,17 @@ ok(moved > 20 && moved < 40, `dt 应被夹到 100ms，5 秒只该走一小步，
 
 // ---------------- 9) 相机 / 层级 / 屏幕速度 ----------------
 ok(cameraScale(ORB.startR) === 1, "初始半径时相机不缩放");
-ok(Math.abs(cameraScale(ORB.maxR) - ORB.startR / ORB.maxR) < 1e-9, "到上限时相机按 startR/r 缩放");
-ok(cameraScale(100000) === 0.5, "相机下限 0.5");
-// 核心：球半径 × 缩放 ≈ 常数 → 玩家球在屏幕上不会越吃越大
-for (const r of [ORB.startR, 48, 60, ORB.maxR]) {
-  const screenR = r * cameraScale(r);
-  ok(Math.abs(screenR - ORB.startR) < 1e-9, `r=${r} 时屏幕半径应恒为 ${ORB.startR}，实际 ${screenR.toFixed(2)}`);
-}
+ok(Math.abs(cameraScale(ORB.maxR) - CAMERA_MIN) < 1e-9, `到上限时相机缩到 ${CAMERA_MIN}`);
+ok(cameraScale(100000) === CAMERA_MIN, "相机下限就是 CAMERA_MIN，超出半径也不再继续缩");
+ok(cameraScale(ORB.minR) === 1, "吃错缩小后不放大视野（不超过 1）");
+// 视野只轻微后撤：可见面积 ≤ 1.8 倍，绘制量才控得住
+const areaGrow = 1 / (CAMERA_MIN * CAMERA_MIN);
+ok(areaGrow < 2, `满级时可见面积应 ≤2 倍（实际 ${areaGrow.toFixed(2)} 倍），否则背景绘制量翻几倍`);
+// 球在屏幕上会真的长大，但幅度温和（40 → ~57px）
+const screenMin = ORB.startR * cameraScale(ORB.startR);
+const screenMax = ORB.maxR * cameraScale(ORB.maxR);
+ok(screenMax > screenMin, "球越大，屏幕上也确实更大（成长要看得见）");
+ok(screenMax / screenMin < 1.5, `屏幕半径增长应温和（<1.5 倍），实际 ${(screenMax / screenMin).toFixed(2)} 倍`);
 
 // 层级改按「吃对个数」
 ok(tierOf(0) === 0 && tierOf(5) === 0, "0~5 个都是村庄");

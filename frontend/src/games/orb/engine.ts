@@ -187,13 +187,23 @@ export function tierOf(correct: number): number {
 }
 
 /**
- * 相机缩放：球越大，背景越远（作为参照物同比例缩小），
- * 而「球半径 × 缩放」恰好是个常数 —— 所以玩家球在屏幕上一直那么大，
- * 食物球也是（渲染层还有 24px 下限兜底）。
+ * 相机最小缩放：视野最多退到原来的 0.75（可见面积 ≈ 1.8 倍）。
+ *
+ * 原来是 40/r、下限 0.5 —— 打到满级时可见面积是 3.6 倍，
+ * 背景装饰、食物球这些「按视野面积画」的东西跟着翻好几倍，低端机就掉帧。
+ * 现在改成轻微后撤：视野只放大 1.8 倍，其余「我变大了」交给球本身
+ * （球在屏幕上从 40px 长到 57px），参照物变化小，判断距离反而更稳。
+ */
+export const CAMERA_MIN = 0.75;
+
+/**
+ * 相机缩放：球越大背景越远，但幅度受 CAMERA_MIN 限制。
+ * 「球半径 × 缩放」不再是常数 —— 球在屏幕上会真的长大一点点，这是故意的。
  */
 export function cameraScale(r: number): number {
-  const s = ORB.startR / Math.max(ORB.minR, r);
-  return Math.min(1, Math.max(0.5, s));
+  const span = ORB.maxR - ORB.startR;
+  const t = Math.max(0, Math.min(1, (r - ORB.startR) / span));
+  return Math.max(CAMERA_MIN, Math.min(1, 1 - (1 - CAMERA_MIN) * t));
 }
 
 /**
@@ -203,7 +213,11 @@ export function cameraScale(r: number): number {
  * 用 √(选项/10) 缩放，让「球间距」在各档之间保持接近（密度守恒）。
  */
 export function fieldRadius(r: number, options: number = ORB.foodCount): number {
-  const base = 450 + r * 1.7;
+  // 相机不再大幅拉远之后，场地也没必要长那么快：原来 450+1.7r 打满时食物铺到
+  // 434 屏幕像素外，一屏只看得见两三个，得满地图找。收成 360+0.6r 之后
+  // 起始 384、满级 406（屏幕上 ~305），大部分球都在视野里，
+  // 「找词」靠读英文而不是靠走路。
+  const base = 360 + r * 0.6;
   const density = Math.sqrt(Math.max(1, options) / ORB.foodCount);
   return base * Math.max(0.55, density);
 }
