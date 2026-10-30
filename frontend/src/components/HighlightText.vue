@@ -25,11 +25,18 @@ const parts = computed(() => {
 </script>
 
 <template>
+  <!--
+    只给命中片段套 <mark>。
+    之前所有片段都用 <mark>，而浏览器对 mark 有默认样式（亮黄底），
+    于是没命中的正文也全是黄底 —— 资料库看起来满屏「黄亮字」。
+  -->
   <span>
-    <mark
-      v-for="(p, i) in parts"
-      :key="i"
-      :class="p.hit ? 'rounded-sm bg-yellow-200 px-0.5 text-slate-900' : ''"
-    >{{ p.text }}</mark>
+    <template v-for="(p, i) in parts" :key="i">
+      <mark
+        v-if="p.hit"
+        class="rounded-[3px] bg-amber-200/70 px-[1px] text-slate-900 dark:bg-amber-300/25 dark:text-amber-100"
+      >{{ p.text }}</mark>
+      <span v-else>{{ p.text }}</span>
+    </template>
   </span>
 </template>

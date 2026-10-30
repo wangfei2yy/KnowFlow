@@ -38,6 +38,16 @@ const showDeleteDialog = ref(false);
 const deleteTargetId = ref("");
 
 // 直接使用 store 的 filteredDocuments（含搜索打分 + 分类/收藏筛选）
+/** 每个分类下有多少份资料（全量计数，不受筛选影响） */
+const categoryCounts = computed(() => {
+  const m = new Map<string, number>();
+  for (const d of docStore.documents) {
+    const k = d.categoryId ?? "";
+    m.set(k, (m.get(k) ?? 0) + 1);
+  }
+  return m;
+});
+
 const filtered = computed(() => docStore.filteredDocuments);
 
 function clearFilters() {
@@ -250,6 +260,7 @@ async function runBatchGenerate() {
         @click="docStore.activeCategoryId = ''"
       >
         全部
+        <span class="ml-1 text-[11px] tabular-nums opacity-60">{{ docStore.documents.length }}</span>
       </button>
       <button
         v-for="c in docStore.categories"
@@ -259,6 +270,7 @@ async function runBatchGenerate() {
         @click="docStore.activeCategoryId = c.id"
       >
         {{ c.name }}
+        <span class="ml-1 text-[11px] tabular-nums opacity-60">{{ categoryCounts.get(c.id) ?? 0 }}</span>
       </button>
       <span class="ml-1 text-xs text-slate-400">{{ filtered.length }} 条结果</span>
       <button
@@ -271,7 +283,7 @@ async function runBatchGenerate() {
     </div>
 
     <!-- 列表 -->
-    <div v-if="docStore.loading && docStore.documents.length === 0" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+    <div v-if="docStore.loading && docStore.documents.length === 0" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       <SkeletonCard v-for="i in 6" :key="i" />
     </div>
 
@@ -291,7 +303,7 @@ async function runBatchGenerate() {
       <button class="btn-secondary" @click="clearFilters">清除筛选</button>
     </EmptyState>
 
-    <div v-else class="grid gap-3 pb-24 sm:grid-cols-2 lg:grid-cols-3">
+    <div v-else class="grid gap-4 pb-24 sm:grid-cols-2 lg:grid-cols-3">
       <div
         v-for="d in filtered"
         :key="d.id"

@@ -1,7 +1,7 @@
 {
   "name": "knowflow",
   "private": true,
-  "version": "1.7.1",
+  "version": "1.8.0",
   "type": "module",
   "scripts": {
     "dev": "vite --config vite.config.ts",
@@ -36,7 +36,8 @@
     "test:wordlearn": "node scripts/run-wordlearn.mjs",
     "start": "node server.mjs",
     "serve:prod": "vite build --config vite.config.ts && node server.mjs",
-    "table:junior": "node scripts/import-junior-words.mjs"
+    "table:junior": "node scripts/import-junior-words.mjs",
+    "test:cleanup": "node scripts/run-cleanup.mjs"
   },
   "dependencies": {
     "dexie": "^4.0.8",

@@ -6,7 +6,6 @@ import { useAppStore } from "@/stores/appStore";
 import { useCompanionStore } from "@/stores/companionStore";
 import { levelFromAffection, formFromAffection, FORM_NAMES } from "@/services/companion/types";
 import CompanionAvatar from "@/components/CompanionAvatar.vue";
-import { db } from "@/db/database";
 import {
   exportAll,
   validateBackup,
@@ -16,12 +15,22 @@ import {
   type BackupPayload
 } from "@/utils/export";
 import { listFlashcards } from "@/services/flashcardService";
+import { loadPackIndex } from "@/services/knowledgePack";
+import {
+  DATA_GROUPS,
+  clearAllData as clearAllGroups,
+  clearGroup,
+  formatStat,
+  statGroup,
+  type DataGroup,
+  type GroupStat
+} from "@/services/dataCleanup";
 import { downloadText } from "@/utils/download";
 import { downloadJSON } from "@/utils/download";
 import { IS_MINITOOL } from "@/utils/runtime";
 import { OpenAICompatibleProvider } from "@/services/ai/OpenAICompatibleProvider";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
-import { Download, Upload, Trash2, Sparkles, ShieldCheck, Info, ImagePlus, Loader2, CheckCircle2, AlertCircle, FileText, Layers, Sun } from "lucide-vue-next";
+import { Download, Upload, Trash2, Sparkles, ShieldCheck, Info, ImagePlus, Loader2, CheckCircle2, AlertCircle, FileText, Layers, Sun, Database, RefreshCw } from "lucide-vue-next";
 
 const aiStore = useAIStore();
 const docStore = useDocumentStore();
@@ -155,8 +164,62 @@ const showClearDialog = ref(false);
 const showReplaceDialog = ref(false);
 const pendingImport = ref<BackupPayload | null>(null);
 
+// ---------------- 数据管理（分类清除） ----------------
+/** 端内没有 AI 相关能力，那一组不显示 */
+const groups = computed(() => DATA_GROUPS.filter((g) => !(IS_MINITOOL && g.id === "ai")));
+const stats = ref<Record<string, GroupStat>>({});
+const pendingGroup = ref<DataGroup | null>(null);
+const showGroupDialog = ref(false);
+
+/** 内置内容清单：只为说明「它们不需要清除」，端内拿不到就不显示 */
+const builtinPacks = ref<{ title: string; count: number; unit: string }[]>([]);
+const PACK_UNIT: Record<string, string> = {
+  junior: "词",
+  cet4: "词",
+  cet6: "词",
+  grammar: "篇",
+  idiom: "条",
+  recipes: "道",
+  seasons: "组",
+  ingredients: "种"
+};
+
+async function refreshStats() {
+  const next: Record<string, GroupStat> = {};
+  for (const g of groups.value) next[g.id] = await statGroup(g);
+  stats.value = next;
+}
+
+function askClear(g: DataGroup) {
+  pendingGroup.value = g;
+  showGroupDialog.value = true;
+}
+
+async function doClearGroup() {
+  const g = pendingGroup.value;
+  if (!g) return;
+  await clearGroup(g);
+  showGroupDialog.value = false;
+  pendingGroup.value = null;
+  // 资料被清掉时列表要立刻变空，其它分组等页面下次进入时自然重算
+  if (g.tables?.includes("documents") || g.tables?.includes("categories")) await docStore.loadAll();
+  await refreshStats();
+  appStore.showToast(`已清除「${g.label}」`, "success");
+}
+
 onMounted(() => {
   docStore.loadAll();
+  void refreshStats();
+  // 内置内容只做展示，失败（端内无网络）就隐藏这一块
+  void loadPackIndex()
+    .then((idx) => {
+      builtinPacks.value = idx.packs.map((p) => ({
+        title: p.title,
+        count: p.count,
+        unit: PACK_UNIT[p.id] ?? "项"
+      }));
+    })
+    .catch(() => undefined);
   // iOS Safari 会把长值的输入框滚到末尾：重新进入时复位，保证前缀可见
   nextTick(() => {
     resetKeyScroll(apiKeyInput.value);
@@ -322,17 +385,15 @@ async function doImport(data: BackupPayload, mode: "merge" | "replace") {
   showReplaceDialog.value = false;
 }
 
+/**
+ * 全部清除：走和数据管理同一套分组，并兜底扫掉所有 knowflow.* 键。
+ * 之前只清了 IndexedDB 五张表，闯关存档、背单词进度、游戏成绩都还留着 ——
+ * 用户会觉得「没删干净」。
+ */
 async function clearAllData() {
-  await db.transaction("rw", db.documents, db.categories, db.tasks, db.flashcards, db.aiJobs, async () => {
-    await Promise.all([
-      db.documents.clear(),
-      db.categories.clear(),
-      db.tasks.clear(),
-      db.flashcards.clear(),
-      db.aiJobs.clear()
-    ]);
-  });
+  await clearAllGroups(groups.value);
   await docStore.loadAll();
+  await refreshStats();
   appStore.showToast("本地数据已清空", "success");
   showClearDialog.value = false;
 }
@@ -657,23 +718,98 @@ async function clearAllData() {
       </ul>
     </div>
 
-    <!-- 危险区 -->
-    <div class="card mt-4 border-red-100 p-5">
-      <div class="mb-2 flex items-center gap-2">
-        <Trash2 :size="18" class="text-red-500" />
-        <h2 class="font-semibold text-red-600">清除本地数据</h2>
+    <!-- 数据管理：分类清除 -->
+    <div class="card mt-4 p-5">
+      <div class="mb-1 flex items-center gap-2">
+        <Database :size="18" class="text-slate-500" />
+        <h2 class="font-semibold text-slate-900">数据管理</h2>
+        <button
+          class="ml-auto flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+          @click="refreshStats"
+        >
+          <RefreshCw :size="12" /> 刷新
+        </button>
       </div>
-      <p class="mb-4 text-sm text-slate-500">删除浏览器中保存的所有资料、任务和卡片，此操作不可恢复。建议先导出备份。</p>
-      <button class="btn-secondary border-red-200 text-red-600 hover:bg-red-50" @click="showClearDialog = true">
-        清除所有数据
-      </button>
+      <p class="mb-3 text-xs leading-relaxed text-slate-500">
+        按类别清除，只影响选中的那一类。删除不可恢复，建议先在上方导出备份。
+      </p>
+
+      <div class="divide-y divide-slate-100">
+        <div v-for="g in groups" :key="g.id" class="flex items-center gap-3 py-2.5">
+          <div class="min-w-0 flex-1">
+            <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span class="text-sm font-medium text-slate-800">{{ g.label }}</span>
+              <span
+                class="rounded-full px-1.5 py-0.5 text-[10px] tabular-nums"
+                :class="stats[g.id]?.empty === false
+                  ? 'bg-brand-50 text-brand-600'
+                  : 'bg-slate-100 text-slate-400'"
+              >
+                {{ stats[g.id] ? formatStat(g, stats[g.id]) : "统计中…" }}
+              </span>
+            </div>
+            <p class="mt-0.5 truncate text-xs text-slate-400">{{ g.desc }}</p>
+          </div>
+          <button
+            class="shrink-0 rounded-lg border px-2.5 py-1 text-xs transition"
+            :class="stats[g.id]?.empty
+              ? 'cursor-not-allowed border-slate-200 text-slate-300'
+              : 'border-red-200 text-red-600 hover:border-red-300 hover:bg-red-50'"
+            :disabled="stats[g.id]?.empty"
+            @click="askClear(g)"
+          >
+            清除
+          </button>
+        </div>
+      </div>
+
+      <!-- 内置内容：说明它们为什么不在清除列表里 -->
+      <div v-if="builtinPacks.length" class="mt-4 rounded-xl bg-slate-50 p-3">
+        <div class="flex items-center gap-1.5 text-xs font-medium text-slate-600">
+          <Info :size="12" class="text-slate-400" />
+          内置内容（随应用提供，不需要清除）
+        </div>
+        <div class="mt-1.5 flex flex-wrap gap-1.5">
+          <span
+            v-for="p in builtinPacks"
+            :key="p.title"
+            class="rounded-md bg-white px-2 py-0.5 text-[11px] text-slate-500 ring-1 ring-slate-100"
+          >
+            {{ p.title }} <span class="tabular-nums text-slate-400">{{ p.count }}{{ p.unit }}</span>
+          </span>
+        </div>
+        <p class="mt-1.5 text-[11px] leading-relaxed text-slate-400">
+          它们是打包进应用的静态内容，不占本地存储、也不会被清空。
+          想清掉它们留下的学习痕迹，用上面「卡片与复习进度 / 闯关与复习位置 / 背单词进度」。
+        </p>
+      </div>
+
+      <!-- 全部清除 -->
+      <div class="mt-4 flex items-center gap-3 border-t border-red-100 pt-3">
+        <div class="min-w-0 flex-1">
+          <div class="text-sm font-medium text-red-600">清除所有本地数据</div>
+          <p class="text-xs text-slate-400">含资料、卡片、任务、全部学习进度与设置，相当于恢复出厂。</p>
+        </div>
+        <button class="btn-secondary shrink-0 border-red-200 text-red-600 hover:bg-red-50" @click="showClearDialog = true">
+          <Trash2 :size="14" /> 全部清除
+        </button>
+      </div>
     </div>
 
     <!-- 弹窗 -->
     <ConfirmDialog
+      :visible="showGroupDialog"
+      :title="`清除「${pendingGroup?.label ?? ''}」`"
+      :message="`将删除：${pendingGroup?.desc ?? ''}。此操作不可恢复，确定继续吗？`"
+      confirm-text="确认清除"
+      danger
+      @confirm="doClearGroup"
+      @cancel="showGroupDialog = false"
+    />
+    <ConfirmDialog
       :visible="showClearDialog"
       title="清除所有数据"
-      message="将删除所有本地资料、任务和卡片，此操作不可恢复。确定继续吗？"
+      message="将删除所有资料、卡片、任务、学习进度与设置（内置词库与食谱不受影响），此操作不可恢复。确定继续吗？"
       confirm-text="确认清除"
       danger
       @confirm="clearAllData"
