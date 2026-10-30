@@ -10,7 +10,18 @@ import { useAppStore } from "@/stores/appStore";
 import { useReviewStore } from "@/stores/reviewStore";
 import { loadPackIndex, loadWords, type PackMeta } from "@/services/knowledgePack";
 import { addWordToReview } from "@/services/quest/wordCards";
-import { loadPlayPack, savePlayPack, saveGameResult, loadUntimed, saveUntimed } from "@/services/gameService";
+import {
+  loadPlayPack,
+  savePlayPack,
+  saveGameResult,
+  loadUntimed,
+  saveUntimed,
+  loadWordMode,
+  saveWordMode,
+  loadWordCursor,
+  saveWordCursor,
+  type PlayWordMode
+} from "@/services/gameService";
 import {
   createRunnerGame,
   runnerAccuracy,
@@ -37,6 +48,12 @@ const loading = ref(false);
 const packs = ref<PackMeta[]>([]);
 const packId = ref((route.query.pack as string) || loadPlayPack());
 const untimed = ref(loadUntimed());
+/** 出词模式（同球球）：顺序 = 按词库关卡一轮不重复、可续刷；随机 = 整库洗牌 */
+const wordMode = ref<PlayWordMode>(loadWordMode());
+const cursor = ref(loadWordCursor(packId.value));
+const totalWords = ref(0);
+let startCursor = 0;
+const packCount = computed(() => packs.value.find((p) => p.id === packId.value)?.count ?? 0);
 
 const stageEl = ref<HTMLElement | null>(null);
 const canvasEl = ref<HTMLCanvasElement | null>(null);
@@ -51,6 +68,7 @@ let observer: ResizeObserver | null = null;
 let raf = 0;
 let lastTs = 0;
 let lastHitSeq = 0;
+let lastCorrect = 0;
 
 const wordPacks = computed(() => packs.value.filter((p) => p.kind === "words" && p.id !== "idiom"));
 const packTitle = computed(() => packs.value.find((p) => p.id === packId.value)?.title ?? "");
@@ -87,7 +105,15 @@ async function prepare(id: string) {
     const words = await loadWords(id);
     packId.value = id;
     savePlayPack(id);
-    game = createRunnerGame({ words, untimed: untimed.value });
+    totalWords.value = words.length;
+    startCursor = wordMode.value === "order" ? loadWordCursor(id) : 0;
+    cursor.value = startCursor;
+    game = createRunnerGame({
+      words,
+      untimed: untimed.value,
+      mode: wordMode.value,
+      startIndex: startCursor
+    });
     if (!game.target || !game.gates.length) {
       appStore.showToast("这个词库的词太少，换个词库试试", "error");
       return;
@@ -170,6 +196,15 @@ function loop(ts: number) {
 
 function syncHud(force = false) {
   if (!game) return;
+
+  // 顺序模式：每穿对一扇门就把游标往前推一格并落盘
+  if (game.correct !== lastCorrect) {
+    lastCorrect = game.correct;
+    if (wordMode.value === "order" && totalWords.value) {
+      cursor.value = (startCursor + game.correct) % totalWords.value;
+      saveWordCursor(packId.value, cursor.value);
+    }
+  }
   const next = {
     time: Number.isFinite(game.duration) ? Math.ceil(Math.max(0, game.duration - game.elapsed)) : 0,
     score: game.score,
@@ -192,6 +227,21 @@ function syncHud(force = false) {
   // 连穿 3 扇对的门回一格
   if (next.lives > prev.lives) appStore.showToast("连对 3 个 · 血量 +1", "success");
   hud.value = next;
+}
+
+/** 切换出词模式：重建这一局（顺序模式接着游标继续刷） */
+function setWordMode(mode: PlayWordMode) {
+  if (wordMode.value === mode) return;
+  wordMode.value = mode;
+  saveWordMode(mode);
+  if (game && !result.value) void prepare(packId.value);
+}
+
+function resetCursor() {
+  cursor.value = 0;
+  saveWordCursor(packId.value, 0);
+  if (game && !result.value) void prepare(packId.value);
+  appStore.showToast("已回到这个词库的第 1 个词", "success");
 }
 
 async function settle() {
@@ -270,6 +320,32 @@ function setUntimed(value: boolean) {
 
     <!-- 选词库 -->
     <template v-if="phase === 'pick'">
+      <div class="card mb-3 flex flex-wrap items-center justify-between gap-2 p-4">
+        <div class="flex items-center gap-2">
+          <span class="text-sm font-semibold text-slate-800">出词</span>
+          <div class="inline-flex rounded-full bg-slate-100 p-0.5 text-xs">
+            <button
+              class="rounded-full px-3 py-1 transition"
+              :class="wordMode === 'order' ? 'bg-white font-medium text-slate-800 shadow-sm' : 'text-slate-500'"
+              @click="setWordMode('order')"
+            >
+              顺序
+            </button>
+            <button
+              class="rounded-full px-3 py-1 transition"
+              :class="wordMode === 'random' ? 'bg-white font-medium text-slate-800 shadow-sm' : 'text-slate-500'"
+              @click="setWordMode('random')"
+            >
+              随机
+            </button>
+          </div>
+        </div>
+        <span v-if="wordMode === 'order'" class="text-[11px] text-slate-400">
+          已刷 {{ cursor }} / {{ packCount }}
+          <button v-if="cursor > 0" class="ml-1 text-brand-600 hover:underline" @click="resetCursor">从头开始</button>
+        </span>
+        <span v-else class="text-[11px] text-slate-400">每局重洗整库，一轮不重复</span>
+      </div>
       <div class="grid gap-3 sm:grid-cols-2">
         <button
           v-for="p in wordPacks"

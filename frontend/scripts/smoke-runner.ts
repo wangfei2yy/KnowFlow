@@ -14,6 +14,7 @@ import {
   type RunnerState
 } from "@/games/runner/engine";
 import type { WordEntry } from "@/services/quest/engine";
+import type { WordMode } from "@/games/words";
 
 const ok = (c: boolean, m: string) => {
   if (!c) throw new Error("断言失败：" + m);
@@ -186,4 +187,39 @@ for (let i = 0; i < 9; i++) {
 ok(capped.lives === LIFE_RULE.cap, `连穿 9 扇应停在 ${LIFE_RULE.cap} 格，实际 ${capped.lives}`);
 console.log("13) 回血：连穿 3 扇 +1，封顶", capped.lives, "格");
 
-console.log("\n✅ 单词跑酷引擎 13 组断言全部通过");
+// ---------------- 14) 出词顺序（和球球同一套规则）----------------
+// 以前也只抽 30 个词反复轮回，用户反馈「十几个词转来转去」
+const many: WordEntry[] = Array.from({ length: 200 }, (_, i) => ({
+  w: `w${String(i).padStart(3, "0")}`,
+  m: `释义${i}`
+}));
+
+const ordered = createRunnerGame({ words: many, seed: 3, mode: "order" as WordMode });
+ok(ordered.pool.length === 200, `顺序模式词池应是整库，实际 ${ordered.pool.length}`);
+ok(ordered.target!.w === "w000", `顺序模式应从第一个词开始，实际 ${ordered.target!.w}`);
+ok(ordered.order.every((v, i) => v === i), "顺序模式取词表就是 0,1,2,3…");
+ok(new Set(ordered.order).size === 200, "一轮内不重复");
+
+const resumed = createRunnerGame({ words: many, seed: 3, mode: "order" as WordMode, startIndex: 42 });
+ok(resumed.target!.w === "w042", `应从游标处接着刷，实际 ${resumed.target!.w}`);
+
+// 连续穿对 3 扇：目标词逐词推进
+let seq = startRunner(resumed);
+const seen: string[] = [seq.target!.w];
+for (let i = 0; i < 3; i++) {
+  seq = playNextWave(seq, true);
+  if (seq.phase === "playing") seen.push(seq.target!.w);
+}
+ok(
+  JSON.stringify(seen) === JSON.stringify(["w042", "w043", "w044", "w045"]),
+  `顺序模式应逐词推进，实际 ${seen.join(" → ")}`
+);
+
+const rand = createRunnerGame({ words: many, seed: 5, mode: "random" as WordMode });
+ok(rand.order.length === 200, "随机模式取词表也覆盖整库");
+ok(new Set(rand.order).size === 200, "随机模式一局内不重复");
+ok(rand.order.some((v, i) => v !== i), "随机模式应打乱顺序");
+
+console.log("14) 出词：顺序模式逐词推进（w042 → w043 → w044 → w045），随机模式整库洗牌");
+
+console.log("\n✅ 单词跑酷引擎 14 组断言全部通过");

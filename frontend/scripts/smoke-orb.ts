@@ -17,13 +17,15 @@ import {
   moveSpeed,
   spellSimilarity,
   difficultyOf,
+  cleanWords,
   CAMERA_MIN,
   screenSpeed,
   DIFFICULTIES,
   ORB,
   TIERS,
   type OrbState,
-  type WordEntry
+  type WordEntry,
+  type WordMode
 } from "@/games/orb/engine";
 
 const ok = (c: boolean, m: string) => {
@@ -62,7 +64,9 @@ ok(base.player.r === ORB.startR, "初始半径 40");
 ok(base.foods.length === 10, `困难档场上应有 10 个球，实际 ${base.foods.length}`);
 ok(base.foods.filter((f) => f.correct).length === 1, "场上必须恰好 1 个正确球");
 ok(!!base.target, "应有目标词");
-ok(base.pool.length === Math.min(ORB.poolSize, words.length), "词池应截断到 30 个");
+ok(base.pool.length === words.length, `词池应是整个词库（${words.length} 个），实际 ${base.pool.length}`);
+ok(base.order.length === words.length, "取词顺序覆盖整库");
+ok(base.distractors.length <= ORB.poolSize, `干扰项池不应超过 ${ORB.poolSize} 个`);
 ok(base.score === 0 && base.elapsed === 0, "初始分数与时间应为 0");
 console.log("1) 建局：球数", base.foods.length, "词池", base.pool.length, "层级", TIERS[base.tier].name);
 
@@ -351,4 +355,57 @@ ok(Math.abs(at60 - at20) < 1, `60fps 走 ${at60.toFixed(1)}、20fps 走 ${at20.t
 
 console.log("16) 1 秒屏幕位移：", travelStart.toFixed(1), "px（起始）→", travelMax.toFixed(1), "px（最大）");
 
-console.log("\n✅ 球球引擎 16 组断言全部通过");
+// ---------------- 17) 出词顺序：顺序模式不重复、能续刷 ----------------
+// 以前每局只抽 30 个词反复轮回，用户反馈「都是十几个词转来转去」
+const many: WordEntry[] = Array.from({ length: 200 }, (_, i) => ({
+  w: `w${String(i).padStart(3, "0")}`,
+  p: "",
+  m: `释义${i}`
+}));
+
+const ordered = createOrbGame({ words: many, seed: 1, mode: "order" as WordMode });
+ok(ordered.pool.length === 200, `顺序模式词池应是整库，实际 ${ordered.pool.length}`);
+ok(ordered.target!.w === "w000", `顺序模式应从第一个词开始，实际 ${ordered.target!.w}`);
+ok(new Set(ordered.order).size === 200, "顺序模式的取词表应覆盖整库且不重复");
+ok(ordered.order.every((v, i) => v === i), "顺序模式下取词表就是 0,1,2,3…");
+
+// 从第 50 个词开始（游标续刷）
+const resumed = createOrbGame({ words: many, seed: 1, mode: "order" as WordMode, startIndex: 50 });
+ok(resumed.target!.w === "w050", `应从游标处接着刷，实际 ${resumed.target!.w}`);
+// 越界自动取模，不会因为游标写坏而崩
+const wrapped = createOrbGame({ words: many, seed: 1, mode: "order" as WordMode, startIndex: 250 });
+ok(wrapped.target!.w === "w050", `游标越界应取模回到 w050，实际 ${wrapped.target!.w}`);
+
+// 连答对 3 个：目标词依次是 w050 → w053，中间不重复
+let seq = startOrb(resumed);
+const seen: string[] = [seq.target!.w];
+for (let i = 0; i < 3; i++) {
+  seq = eat(seq, true);
+  seen.push(seq.target!.w);
+}
+ok(
+  JSON.stringify(seen) === JSON.stringify(["w050", "w051", "w052", "w053"]),
+  `顺序模式应逐词推进，实际 ${seen.join(" → ")}`
+);
+ok(new Set(seen).size === seen.length, "一轮内不应重复出现同一个词");
+
+// 随机模式：整库洗牌，一局内同样不重复
+const rand1 = createOrbGame({ words: many, seed: 7, mode: "random" as WordMode });
+ok(rand1.order.length === 200, "随机模式取词表也覆盖整库");
+ok(new Set(rand1.order).size === 200, "随机模式一局内不重复");
+ok(rand1.order.some((v, i) => v !== i), "随机模式应打乱顺序，而不是照原序");
+const rand2 = createOrbGame({ words: many, seed: 8, mode: "random" as WordMode });
+ok(JSON.stringify(rand1.order) !== JSON.stringify(rand2.order), "不同种子应给出不同顺序");
+
+// 占位释义必须被过滤：junior 词库以前有 17 条「找不到解释」
+const withPlaceholder: WordEntry[] = [
+  { w: "am", p: "/æm/", m: "找不到解释" },
+  { w: "apple", p: "", m: "n. 苹果" },
+  { w: "empty", p: "", m: "   " }
+];
+ok(cleanWords(withPlaceholder).length === 1, "占位释义与空释义都应被过滤");
+ok(createOrbGame({ words: withPlaceholder, seed: 3 }).target!.w === "apple", "过滤后应只剩能用的词");
+
+console.log("17) 出词：顺序模式逐词推进（w050 → w051 → w052 → w053），随机模式整库洗牌，一轮不重复");
+
+console.log("\n✅ 球球引擎 17 组断言全部通过");

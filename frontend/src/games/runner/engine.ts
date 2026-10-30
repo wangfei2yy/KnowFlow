@@ -9,6 +9,7 @@
  */
 import { spellSimilarity, type WordEntry } from "@/games/orb/engine";
 import { healForStreak, maxLivesOf } from "@/games/lives";
+import { buildDistractorPool, buildWordOrder, cleanWords, type WordMode } from "@/games/words";
 import { shortMeaning } from "@/services/quest/engine";
 
 export const RUNNER = {
@@ -30,7 +31,8 @@ export const RUNNER = {
   lives: 3,
   duration: 60,
   /** 本局词池大小 */
-  poolSize: 30
+  /** 干扰项候选池大小（从整库随机抽，形近词排序只在它上面做） */
+  poolSize: 240
 } as const;
 
 export interface RunnerGate {
@@ -57,8 +59,12 @@ export interface RunnerState {
   lane: number;
   gates: RunnerGate[];
   pool: WordEntry[];
+  /** 出词模式与取词顺序（同球球，定义在 games/words.ts） */
+  mode: WordMode;
   order: number[];
   orderPos: number;
+  /** 干扰项候选池（只在它上面挑形近词） */
+  distractors: WordEntry[];
   /** 当前这一波该穿哪个词（中文提示用） */
   target: WordEntry | null;
   /** 本波是否已经换过目标（防止每帧重复推进） */
@@ -88,6 +94,10 @@ export interface RunnerConfig {
   duration?: number;
   lives?: number;
   untimed?: boolean;
+  /** 出词模式：顺序（按词库关卡，一轮不重复、可续刷）/ 随机（整库洗牌） */
+  mode?: WordMode;
+  /** 顺序模式的起点（0 基，越界取模） */
+  startIndex?: number;
   seed?: number;
 }
 
@@ -113,7 +123,7 @@ function nextTarget(s: RunnerState): WordEntry | null {
 /** 干扰词：形近优先，避免「看长度猜」 */
 function distractor(s: RunnerState, exclude: Set<string>): string {
   const target = s.target?.w ?? "";
-  const candidates = s.pool.filter((w) => w.w !== target && !exclude.has(w.w));
+  const candidates = s.distractors.filter((w) => w.w !== target && !exclude.has(w.w));
   if (!candidates.length) return target;
   const scored = candidates.map((w) => ({ w: w.w, score: spellSimilarity(target, w.w) + rand(s) * 2 }));
   scored.sort((a, b) => b.score - a.score);
@@ -145,14 +155,17 @@ function spawnWave(s: RunnerState): RunnerGate[] {
 }
 
 export function createRunnerGame(config: RunnerConfig): RunnerState {
-  const usable = config.words.filter((w) => w.w && w.m);
+  const usable = cleanWords(config.words);
+  const mode: WordMode = config.mode ?? "random";
   const state: RunnerState = {
     phase: "ready",
     lane: 1,
     gates: [],
     pool: [],
+    mode,
     order: [],
     orderPos: 0,
+    distractors: [],
     target: null,
     waveAdvanced: false,
     label: "",
@@ -174,10 +187,16 @@ export function createRunnerGame(config: RunnerConfig): RunnerState {
     nextGateId: 1
   };
 
-  state.pool = shuffle(usable.slice(), state).slice(0, Math.min(RUNNER.poolSize, usable.length));
-  state.order = shuffle(
-    state.pool.map((_, i) => i),
-    state
+  // 词池 = 整库（以前只抽 30 个反复轮回）
+  state.pool = usable;
+  const shuffled = <T,>(list: T[]) => shuffle(list, state);
+  state.order = buildWordOrder(mode, usable.length, config.startIndex ?? 0, shuffled);
+  state.distractors = buildDistractorPool(
+    usable,
+    state.order,
+    state.orderPos,
+    RUNNER.poolSize,
+    shuffled
   );
   state.target = nextTarget(state);
   state.label = state.target ? shortMeaning(state.target.m, 8) : "";

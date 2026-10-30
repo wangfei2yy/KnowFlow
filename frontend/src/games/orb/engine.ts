@@ -9,6 +9,12 @@
  */
 import { shortMeaning, type WordEntry } from "@/services/quest/engine";
 import { healForStreak, maxLivesOf } from "@/games/lives";
+import {
+  buildDistractorPool,
+  buildWordOrder,
+  cleanWords,
+  type WordMode
+} from "@/games/words";
 
 export type { WordEntry };
 
@@ -79,8 +85,8 @@ export const ORB = {
   duration: 60,
   /** 吃到判定：球心进入玩家半径的这个比例内即算吃中 */
   eatFactor: 0.92,
-  /** 本局词池大小 */
-  poolSize: 30
+  /** 干扰项候选池大小（从整库随机抽这么多个，只在它上面挑形近词） */
+  poolSize: 240
 } as const;
 
 export interface Food {
@@ -112,6 +118,15 @@ export interface OrbHit {
 
 export type OrbPhase = "ready" | "playing" | "over";
 
+/**
+ * 出词顺序（定义在 games/words.ts，球球和跑酷共用）：
+ * - `order`：按词库原有顺序一关一关往下走，配合存档游标，一轮刷完前不重复；
+ * - `random`：整库洗牌，一局之内不重复。
+ * 以前是「只抽 30 个词反复轮回」，玩两分钟就把 30 个词背下来了。
+ */
+export { cleanWords };
+export type { WordMode };
+
 export interface OrbState {
   phase: OrbPhase;
   player: OrbPlayer;
@@ -120,9 +135,12 @@ export interface OrbState {
   /** 本局难度与「场上待选数」（存进 state，补位时才知道该补到几个） */
   difficulty: DifficultyId;
   options: number;
-  /** 目标词的取用顺序（洗牌后的下标），循环使用 */
+  /** 出词模式与取词顺序（指向 pool 的下标） */
+  mode: WordMode;
   order: number[];
   orderPos: number;
+  /** 干扰项候选池：只从这个小池子里抽，避免每次都在整库上做排序 */
+  distractors: WordEntry[];
   target: WordEntry | null;
   /** 玩家球上显示的中文短义，随目标词更新（渲染层直接用，免得每帧算） */
   label: string;
@@ -158,9 +176,15 @@ export interface OrbConfig {
   lives?: number;
   /** 难度档（默认普通档 6 个词） */
   difficulty?: DifficultyId;
+  /** 出词模式（默认 random，保持老行为；页面会传用户选的那个） */
+  mode?: WordMode;
+  /** 顺序模式：这一局从词库的第几个词开始（0 基，越界自动取模） */
+  startIndex?: number;
   /** 指定随机种子，便于复现 */
   seed?: number;
 }
+
+
 
 /**
  * 环境层级：按「吃对个数」升级，不再按半径。
@@ -270,7 +294,8 @@ export function spellSimilarity(a: string, b: string): number {
 /** 挑一个干扰词：从形近的前半段里随机取，保证同一局也不会总撞同一个词 */
 function distractorWord(s: OrbState, exclude: Set<string>): string {
   const targetWord = s.target?.w ?? "";
-  const candidates = s.pool.filter((w) => w.w !== targetWord && !exclude.has(w.w));
+  // 只用干扰池（几百个词），不是整库：整库 4000+ 条时每次挑干扰项都要做一遍排序
+  const candidates = s.distractors.filter((w) => w.w !== targetWord && !exclude.has(w.w));
   if (!candidates.length) return targetWord;
   const scored = candidates.map((w) => ({ w: w.w, score: spellSimilarity(targetWord, w.w) + rand(s) * 2 }));
   scored.sort((a, b) => b.score - a.score);
@@ -358,10 +383,11 @@ function topUpFoods(state: OrbState): void {
 }
 
 export function createOrbGame(config: OrbConfig): OrbState {
-  const usable = config.words.filter((w) => w.w && w.m);
+  const usable = cleanWords(config.words);
   const duration = config.untimed ? Number.POSITIVE_INFINITY : (config.duration ?? ORB.duration);
   const lives = config.lives ?? ORB.lives;
   const difficulty = difficultyOf(config.difficulty);
+  const mode: WordMode = config.mode ?? "random";
 
   const state: OrbState = {
     phase: "ready",
@@ -370,8 +396,10 @@ export function createOrbGame(config: OrbConfig): OrbState {
     pool: [],
     difficulty: difficulty.id,
     options: difficulty.options,
+    mode,
     order: [],
     orderPos: 0,
+    distractors: [],
     target: null,
     label: "",
     labelFull: "",
@@ -394,13 +422,17 @@ export function createOrbGame(config: OrbConfig): OrbState {
     nextFoodId: 1
   };
 
-  // 本局词池：洗牌后取 30 个（词库上万条也不能全铺到场上去）
-  const pool = shuffleInPlace(usable.slice(), state).slice(0, Math.min(ORB.poolSize, usable.length));
-  state.pool = pool;
-  state.order = shuffleInPlace(
-    pool.map((_, i) => i),
-    state
-  );
+  /**
+   * 词池 = 整个词库（以前只抽 30 个反复轮回，玩两分钟就摸清规律了）。
+   * 顺序模式按词库原顺序从游标处往下走，随机模式整库洗牌；两者一轮内都不重复。
+   */
+  state.pool = usable;
+  const n = usable.length;
+  const shuffle = <T,>(list: T[]) => shuffleInPlace(list, state);
+  state.order = buildWordOrder(mode, n, config.startIndex ?? 0, shuffle);
+  // 干扰项只在这个小池子里挑（整库四五千条时，形近词评分排序太浪费）
+  state.distractors = buildDistractorPool(usable, state.order, state.orderPos, ORB.poolSize, shuffle);
+
   state.target = nextTarget(state);
   state.label = targetLabel(state.target);
   state.labelFull = fullLabel(state.target);

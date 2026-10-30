@@ -22,7 +22,12 @@ import {
   loadUntimed,
   saveUntimed,
   loadDifficulty,
-  saveDifficulty
+  saveDifficulty,
+  loadWordMode,
+  saveWordMode,
+  loadWordCursor,
+  saveWordCursor,
+  type PlayWordMode
 } from "@/services/gameService";
 import {
   createOrbGame,
@@ -33,6 +38,7 @@ import {
   timeText,
   difficultyOf,
   DIFFICULTIES,
+  cleanWords,
   ORB,
   TIERS,
   type DifficultyId,
@@ -74,6 +80,20 @@ const untimed = ref(loadUntimed());
 /** 难度档：只影响场上待选单词数（4 / 6 / 8 / 10） */
 const difficulty = ref<DifficultyId>(loadDifficulty() as DifficultyId);
 const difficultyMeta = computed(() => difficultyOf(difficulty.value));
+
+/**
+ * 出词模式：顺序（按词库关卡顺序，一轮不重复，带游标续刷）/ 随机（整库洗牌）。
+ * 之前每局只抽 30 个词反复轮回，用户反馈「都是十几个词转来转去」。
+ */
+const wordMode = ref<PlayWordMode>(loadWordMode());
+const cursor = ref(loadWordCursor(packId.value));
+/** 本局开始时词库总词数与起始游标，用于算进度 */
+const totalWords = ref(0);
+let startCursor = 0;
+const progressText = computed(() => {
+  if (!totalWords.value) return "";
+  return `${Math.min(cursor.value + 1, totalWords.value)} / ${totalWords.value}`;
+});
 const banked = ref(0);
 const banner = ref("");
 const joystick = ref<JoystickState>({ active: false, x: 0, y: 0, dx: 0, dy: 0 });
@@ -100,8 +120,11 @@ const hud = ref<Hud>({
   labelFull: ""
 });
 
-const wordPacks = computed(() => packs.value.filter((p) => p.kind === "words"));
+// 成语也是 kind=words，但它是中文猜成语，不能进单词球球（跑酷那边同样排除了它）
+const wordPacks = computed(() => packs.value.filter((p) => p.kind === "words" && p.id !== "idiom"));
 const packTitle = computed(() => packs.value.find((p) => p.id === packId.value)?.title ?? "");
+/** 选词库页显示的词数用 meta 里的 count（不必为了显示数字去下载整份词库） */
+const packCount = computed(() => packs.value.find((p) => p.id === packId.value)?.count ?? 0);
 const tierLabel = computed(() => tierName(hud.value.tier));
 
 // 非响应式：60fps 更新的状态放 Vue 响应式里只是负担
@@ -111,6 +134,7 @@ let input: OrbInput | null = null;
 let raf = 0;
 let lastTs = 0;
 let lastHitSeq = 0;
+let lastCorrect = 0;
 let bannerTimer = 0;
 let observer: ResizeObserver | null = null;
 
@@ -155,9 +179,20 @@ async function prepare(id: string) {
   loading.value = true;
   try {
     const words = await loadWords(id);
+    const usable = cleanWords(words);
     packId.value = id;
     savePlayPack(id);
-    const g = createOrbGame({ words, untimed: untimed.value, difficulty: difficulty.value });
+    totalWords.value = usable.length;
+    // 顺序模式从上次刷到的位置继续；随机模式每局重洗
+    startCursor = wordMode.value === "order" ? loadWordCursor(id) : 0;
+    cursor.value = startCursor;
+    const g = createOrbGame({
+      words: usable,
+      untimed: untimed.value,
+      difficulty: difficulty.value,
+      mode: wordMode.value,
+      startIndex: startCursor
+    });
     if (!g.target || g.foods.length === 0) {
       appStore.showToast("这个词库的词太少，换个词库试试", "error");
       return;
@@ -266,6 +301,16 @@ function loop(ts: number) {
 /** HUD 只在数值真的变了才赋值，避免 60fps 触发整块重排 */
 function syncHud(force = false) {
   if (!game) return;
+
+  // 顺序模式：每答对一个就把游标往前推一格并落盘，
+  // 中途退出/关页面也不会白刷（下次接着这个位置继续）
+  if (game.correct !== lastCorrect) {
+    lastCorrect = game.correct;
+    if (wordMode.value === "order" && totalWords.value) {
+      cursor.value = (startCursor + game.correct) % totalWords.value;
+      saveWordCursor(packId.value, cursor.value);
+    }
+  }
   const next = {
     time: Number.isFinite(game.duration) ? Math.ceil(Math.max(0, game.duration - game.elapsed)) : 0,
     score: game.score,
@@ -347,6 +392,25 @@ function setDifficulty(id: DifficultyId) {
   if (game && !result.value) void prepare(packId.value);
 }
 
+/**
+ * 切换出词模式：重建这一局。
+ * 顺序模式会从该词库上次刷到的位置接着走；随机模式每次重洗整库。
+ */
+function setWordMode(mode: PlayWordMode) {
+  if (wordMode.value === mode) return;
+  wordMode.value = mode;
+  saveWordMode(mode);
+  if (game && !result.value) void prepare(packId.value);
+}
+
+/** 顺序模式「从头再刷一轮」 */
+function resetCursor() {
+  cursor.value = 0;
+  saveWordCursor(packId.value, 0);
+  if (game && !result.value) void prepare(packId.value);
+  appStore.showToast("已回到这个词库的第 1 个词", "success");
+}
+
 function changePack() {
   stopLoop();
   // 画布会被 v-else 卸掉，渲染器与输入都绑在旧元素上，必须一起清掉重建
@@ -413,6 +477,39 @@ const bestTierName = computed(() => (result.value ? tierName(result.value.tier) 
           </button>
         </div>
         <p class="mt-2 text-[11px] leading-relaxed text-slate-400">{{ difficultyMeta.desc }}</p>
+
+        <!-- 出词模式：顺序 = 按词库关卡一个一个来，一轮不重复，下次接着刷 -->
+        <div class="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3">
+          <div class="flex items-center gap-2">
+            <span class="text-sm font-semibold text-slate-800">出词</span>
+            <div class="inline-flex rounded-full bg-slate-100 p-0.5 text-xs">
+              <button
+                class="rounded-full px-3 py-1 transition"
+                :class="wordMode === 'order' ? 'bg-white font-medium text-slate-800 shadow-sm' : 'text-slate-500'"
+                @click="setWordMode('order')"
+              >
+                顺序
+              </button>
+              <button
+                class="rounded-full px-3 py-1 transition"
+                :class="wordMode === 'random' ? 'bg-white font-medium text-slate-800 shadow-sm' : 'text-slate-500'"
+                @click="setWordMode('random')"
+              >
+                随机
+              </button>
+            </div>
+          </div>
+          <span v-if="wordMode === 'order'" class="text-[11px] text-slate-400">
+            已刷 {{ cursor }} / {{ packCount }}
+            <button v-if="cursor > 0" class="ml-1 text-brand-600 hover:underline" @click="resetCursor">从头开始</button>
+          </span>
+          <span v-else class="text-[11px] text-slate-400">每局重洗整库，一轮也不重复</span>
+        </div>
+        <p class="mt-1 text-[11px] leading-relaxed text-slate-400">
+          {{ wordMode === 'order'
+            ? '顺序模式：从上次刷到的词接着走，整个词库刷完一轮前不会重复。'
+            : '随机模式：整库洗牌，每局顺序不同，同样是一轮内不重复。' }}
+        </p>
       </div>
 
       <div class="grid gap-3 sm:grid-cols-2">
@@ -572,6 +669,9 @@ const bestTierName = computed(() => (result.value ? tierName(result.value.tier) 
           <div class="mt-1 text-xs text-slate-500">
             答对 {{ result.correct }} · 答错 {{ result.wrong }} · 正确率 {{ accuracyText }} ·
             最高连击 {{ result.bestCombo }} · {{ bestTierName }} · {{ difficultyMeta.name }}档
+          </div>
+          <div v-if="wordMode === 'order' && totalWords" class="mt-1 text-xs text-slate-400">
+            顺序模式 · 已刷到第 {{ cursor + 1 }} / {{ totalWords }} 个词
           </div>
           <div v-if="banked" class="mt-2 text-xs text-emerald-600">
             已加入 {{ banked }} 个词到复习队列

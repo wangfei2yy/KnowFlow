@@ -224,6 +224,59 @@ export function saveDifficulty(id: string): void {
   }
 }
 
+// ---------------- 出词模式与顺序游标 ----------------
+
+const WORD_MODE_KEY = "knowflow.play.mode";
+const WORD_CURSOR_KEY = "knowflow.play.cursor";
+
+export type PlayWordMode = "order" | "random";
+
+/**
+ * 出词模式：顺序（按词库关卡顺序，一轮不重复）或随机（整库洗牌）。
+ * 默认给顺序 —— 「只抽 30 个词反复轮回」是用户反馈的核心问题。
+ */
+export function loadWordMode(fallback: PlayWordMode = "order"): PlayWordMode {
+  try {
+    return localStorage.getItem(WORD_MODE_KEY) === "random" ? "random" : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+export function saveWordMode(mode: PlayWordMode): void {
+  try {
+    localStorage.setItem(WORD_MODE_KEY, mode);
+  } catch {
+    /* 忽略 */
+  }
+}
+
+/** 顺序模式下每个词库刷到第几个词了（0 基）；没有记录就是 0 */
+export function loadWordCursor(packId: string): number {
+  const map = readJSON<Record<string, number>>(WORD_CURSOR_KEY);
+  if (!map || typeof map !== "object" || Array.isArray(map)) return 0;
+  const v = map[packId];
+  return typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0;
+}
+
+export function saveWordCursor(packId: string, index: number): void {
+  const map = readJSON<Record<string, number>>(WORD_CURSOR_KEY);
+  const safe = map && typeof map === "object" && !Array.isArray(map) ? map : {};
+  safe[packId] = Math.max(0, Math.floor(index));
+  writeJSON(WORD_CURSOR_KEY, safe);
+}
+
+export function clearWordCursor(packId?: string): void {
+  if (!packId) {
+    removeKey(WORD_CURSOR_KEY);
+    return;
+  }
+  const map = readJSON<Record<string, number>>(WORD_CURSOR_KEY);
+  if (!map || typeof map !== "object") return;
+  delete (map as Record<string, number>)[packId];
+  writeJSON(WORD_CURSOR_KEY, map);
+}
+
 // ---------------- 游戏成绩 ----------------
 
 export function loadGameProgress(): GameProgress {

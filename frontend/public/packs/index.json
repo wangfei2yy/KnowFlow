@@ -1,13 +1,13 @@
 {
   "version": 1,
-  "generatedAt": "2026-10-29T15:04:08.787Z",
+  "generatedAt": "2026-10-30T05:08:14.726Z",
   "packs": [
     {
       "id": "junior",
       "kind": "words",
       "title": "初中词汇",
       "count": 2135,
-      "bytes": 236361,
+      "bytes": 236537,
       "file": "junior.json"
     },
     {

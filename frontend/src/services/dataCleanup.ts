@@ -75,7 +75,9 @@ const LS = {
     "knowflow.companion",
     "knowflow.play.pack",
     "knowflow.play.untimed",
-    "knowflow.play.difficulty"
+    "knowflow.play.difficulty",
+    "knowflow.play.mode",
+    "knowflow.play.cursor"
   ],
   ai: [
     "knowflow.ai.config",
