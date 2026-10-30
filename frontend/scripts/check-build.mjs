@@ -1,0 +1,71 @@
+/**
+ * 构建产物体检：守住首屏那几条关键约束，防止以后无意中改回去。
+ *
+ * 为什么需要它：首屏慢过一次（线上跑 dev server），后来又踩过
+ * 「modulePreload 关掉 → 点模块要现下载 → 卡 1.7s」。这些都不是运行时报错，
+ * 只能靠检查产物。跑法：npm run test:build（需先 build）
+ */
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+
+let pass = 0;
+const failed = [];
+const ok = (cond, msg) => {
+  if (cond) pass += 1;
+  else failed.push(msg);
+};
+
+const DIST = "dist";
+const htmlPath = `${DIST}/index.html`;
+if (!existsSync(htmlPath)) {
+  console.error("❌ 找不到 dist/index.html，先跑 npm run build");
+  process.exit(1);
+}
+const html = readFileSync(htmlPath, "utf8");
+const assets = readdirSync(`${DIST}/assets`);
+
+// 1) 入口 CSS 必须内联：<link rel="stylesheet"> 会阻塞首帧，等于多等一个 RTT
+ok(/<style>/.test(html), "index.html 应内联入口 CSS（首帧不被渲染阻塞）");
+ok(
+  !/<link[^>]+rel="stylesheet"[^>]*assets\/[^"]+\.css/.test(html),
+  "index.html 不应再引入外链入口 CSS（会阻塞首帧）"
+);
+
+// 2) 首屏骨架：JS 没到位时不能是白屏
+ok(html.includes("kf-boot"), "index.html 应包含首屏骨架（避免 1s+ 白屏）");
+
+// 3) 依赖预加载：路由 chunk 的公共依赖要能并行拉，不然是串行水位线
+const preloads = [...html.matchAll(/<link rel="modulepreload"[^>]*href="([^"]+)"/g)].map((m) => m[1]);
+ok(preloads.length >= 2, `index.html 应有 modulepreload（实际 ${preloads.length} 个）`);
+ok(
+  preloads.some((p) => /vue-[A-Za-z0-9_-]+\.js/.test(p)),
+  "vue 运行时应被 modulepreload（否则要等主包下载完才知道要它）"
+);
+
+// 4) 分包：框架、dexie、图标应各自独立，改动业务代码不会让它们失效
+for (const name of ["vue", "dexie", "icons"]) {
+  ok(
+    assets.some((f) => f.startsWith(`${name}-`) && f.endsWith(".js")),
+    `应存在独立的 ${name} chunk（便于长期缓存）`
+  );
+}
+
+// 5) 入口包不该把 pdfjs 拖进来（它是懒加载的重家伙）
+const entry = assets.find((f) => /^index-[A-Za-z0-9_-]+\.js$/.test(f));
+ok(!!entry, "应有入口 chunk");
+if (entry) {
+  const size = statSync(`${DIST}/assets/${entry}`).size;
+  ok(size < 200 * 1024, `入口 chunk 应 <200KB，实际 ${Math.round(size / 1024)}KB`);
+  const code = readFileSync(`${DIST}/assets/${entry}`, "utf8");
+  ok(!code.includes("vite/client"), "入口包不应含 dev server 代码（说明跑的不是生产构建）");
+  ok(!code.includes("PDFDocumentProxy"), "入口包不应含 pdfjs（应留在按需加载的 chunk 里）");
+}
+
+// 6) 网页构建不应残留小工具的替身模块
+ok(!assets.some((f) => f.includes("stub")), "网页产物不应包含 *stub* 替身 chunk");
+
+if (failed.length) {
+  console.error("\n❌ 构建产物体检失败：");
+  for (const f of failed) console.error("  •", f);
+  process.exit(1);
+}
+console.log(`\n✅ 构建产物体检通过（${pass} 条）：CSS 内联 / 首屏骨架 / 依赖预加载 / 分包`);

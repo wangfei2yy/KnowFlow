@@ -2,6 +2,7 @@ import { createApp } from "vue";
 import { createPinia } from "pinia";
 import App from "./App.vue";
 import { router } from "./router";
+import { prefetchHotRoutes } from "./router/prefetch";
 import { runMigrations } from "./db/migrations";
 import { IS_MINITOOL } from "./utils/runtime";
 import "./assets/main.css";
@@ -25,6 +26,8 @@ window.addEventListener("unhandledrejection", (event) => {
 
 runMigrations().then(() => {
   app.mount("#app");
+  // 首屏挂载完再预取其它模块的 chunk（内部会等 load + 空闲，不抢首屏带宽）
+  prefetchHotRoutes();
 });
 
 // PWA：仅网页生产构建注册（小工具容器禁用 Service Worker）

@@ -1,6 +1,7 @@
 import { defineConfig, type Plugin } from "vite";
 import vue from "@vitejs/plugin-vue";
 import { fileURLToPath, URL } from "node:url";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 
 /**
  * 构建目标：
@@ -39,8 +40,42 @@ function minitoolHtmlPlugin(): Plugin {
   };
 }
 
+/**
+ * 把入口 CSS 内联进 index.html。
+ *
+ * 为什么：`<link rel="stylesheet">` 是**渲染阻塞**的 —— 浏览器要等它回来才画第一帧。
+ * 部署环境单次往返约 0.6s，这一等就是 0.6s 的白屏（骨架屏都被挡住）。
+ * 入口 CSS 只有 8KB（gzip 约 2KB），内联进 HTML 后省掉一个往返，首帧立刻可见。
+ * 页面级 CSS（OrbPage 等）仍然按 chunk 分开，不受影响。
+ *
+ * 只对网页构建生效：小工具容器的安全策略由容器管理，不塞内联样式更稳妥。
+ */
+function inlineEntryCssPlugin(): Plugin {
+  return {
+    name: "kf-inline-entry-css",
+    apply: "build",
+    enforce: "post",
+    closeBundle() {
+      if (isMiniTool) return;
+      const dir = "dist";
+      const htmlPath = `${dir}/index.html`;
+      if (!existsSync(htmlPath)) return;
+      const html = readFileSync(htmlPath, "utf8");
+      const next = html.replace(
+        /<link[^>]+rel="stylesheet"[^>]*href="\.?\/?(assets\/[^"]+\.css)"[^>]*>/g,
+        (tag, href: string) => {
+          const cssPath = `${dir}/${href}`;
+          if (!existsSync(cssPath)) return tag;
+          return `<style>${readFileSync(cssPath, "utf8")}</style>`;
+        }
+      );
+      if (next !== html) writeFileSync(htmlPath, next);
+    }
+  };
+}
+
 export default defineConfig({
-  plugins: [vue(), ...(isMiniTool ? [minitoolHtmlPlugin()] : [])],
+  plugins: [vue(), ...(isMiniTool ? [minitoolHtmlPlugin()] : [inlineEntryCssPlugin()])],
   // 使用相对路径，便于部署到任意静态托管（含子路径）
   base: "./",
   define: {
@@ -103,7 +138,9 @@ export default defineConfig({
     target: isMiniTool ? ["es2017", "chrome61"] : "es2020",
     // 小工具：单文件 CSS + 单个 classic script，无 code splitting
     cssCodeSplit: !isMiniTool,
-    modulePreload: false,
+    // 网页构建打开 modulepreload：路由 chunk 的静态依赖会被并行预取，
+    // 少一层「先下 A 才知道要下 B」的水位线（部署环境单次请求约 0.6s，这一层很贵）
+    modulePreload: isMiniTool ? false : { polyfill: false },
     rollupOptions: isMiniTool
       ? {
           output: {
@@ -114,6 +151,24 @@ export default defineConfig({
             assetFileNames: "assets/[name][extname]"
           }
         }
-      : {}
+      : {
+          output: {
+            /**
+             * 手动分包的价值不只是「首屏更小」，更是**缓存命中**：
+             * 以前所有第三方库和业务代码挤在 index-*.js 里，改一行文案整个 110KB 都要重下。
+             * 现在框架、图标、工具库各有独立 chunk，改业务代码时它们都还在缓存里。
+             */
+            manualChunks(id: string) {
+              if (!id.includes("node_modules")) return;
+              if (id.includes("pdfjs-dist")) return "pdfjs";
+              if (id.includes("dexie")) return "dexie";
+              if (id.includes("lucide")) return "icons";
+              if (id.includes("/vue/") || id.includes("vue-router") || id.includes("pinia") || id.includes("@vue")) {
+                return "vue";
+              }
+              return "vendor";
+            }
+          }
+        }
   }
 });

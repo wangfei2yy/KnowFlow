@@ -37,7 +37,8 @@
     "start": "node server.mjs",
     "serve:prod": "vite build --config vite.config.ts && node server.mjs",
     "table:junior": "node scripts/import-junior-words.mjs",
-    "test:cleanup": "node scripts/run-cleanup.mjs"
+    "test:cleanup": "node scripts/run-cleanup.mjs",
+    "test:build": "node scripts/check-build.mjs"
   },
   "dependencies": {
     "dexie": "^4.0.8",
