@@ -4,7 +4,8 @@
  * 统一用 Pointer Events：鼠标、触屏、触控笔一套代码，不再分 mouse/touch 两套。
  * 三种操作映射到同一个方向向量：
  * - 键盘：WASD / 方向键，按满速
- * - 鼠标：光标相对屏幕中心的方向，离得越远越快
+ * - 鼠标：**按住左键**才移动，方向对准光标，离得越远越快（死区 8px）
+ *   以前是光标一飘球就跑，想点返回按钮时球会先冲一段，和手机端「按下才动」也不一致
  * - 触屏：手指按下处为原点的「相对拖动」摇杆，死区 8px、行程 48px
  *
  * 摇杆一定是相对拖动：绝对定位（手指必须点在摇杆上）在手机上会漏掉一半的手势。
@@ -67,11 +68,19 @@ export function createOrbInput(
 
   function onPointerDown(e: PointerEvent) {
     if (e.pointerType === "mouse") {
+      // 只认左键：右键/中键不该让球跑起来
+      if (e.button !== 0) return;
       mouse.pressed = true;
       const p = localPoint(e);
       mouse.x = p.x;
       mouse.y = p.y;
       mouse.inside = true;
+      try {
+        // 捕获指针：在画布外松开也能收到 pointerup，不然球会一直朝那个方向冲
+        el.setPointerCapture(e.pointerId);
+      } catch {
+        /* 忽略 */
+      }
       return;
     }
     // 只认第一根手指，第二根按下不打断
@@ -157,15 +166,20 @@ export function createOrbInput(
       return { x: (touch.dx / len) * mag, y: (touch.dy / len) * mag };
     }
 
-    // 3) 鼠标：方向对准光标，离中心越远越快
-    if (mouse.inside) {
+    /**
+     * 3) 鼠标：**按住左键才移动**（和手机端「按下才动」一致）。
+     * 之前是光标一飘球就跑，想点返回按钮时球会先朝那儿冲一段，很容易吃错球。
+     */
+    if (mouse.inside && mouse.pressed) {
       const rect = el.getBoundingClientRect();
       const dx = mouse.x - rect.width / 2;
       const dy = mouse.y - rect.height / 2;
       const len = Math.hypot(dx, dy);
-      if (len < 12) return { x: 0, y: 0 };
-      const mag = mouse.pressed ? 1 : Math.min(1, Math.max(0.15, (len - 12) / 110));
-      return { x: dx / len, y: dy / len };
+      // 死区：贴着球心时方向会剧烈抖动，和手机摇杆保持同一个阈值
+      if (len <= DEAD_ZONE) return { x: 0, y: 0 };
+      // 离得越远越快（原来算出了 mag 却没用，等于永远满速）
+      const mag = Math.min(1, (len - DEAD_ZONE) / 110);
+      return { x: (dx / len) * mag, y: (dy / len) * mag };
     }
 
     return { x: 0, y: 0 };

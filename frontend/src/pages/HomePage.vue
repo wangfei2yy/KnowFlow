@@ -10,6 +10,7 @@ import DocumentCard from "@/components/DocumentCard.vue";
 import EmptyState from "@/components/EmptyState.vue";
 import {
   Plus,
+  Upload,
   Sparkles,
   MessageCircleQuestion,
   GraduationCap,
@@ -19,7 +20,7 @@ import {
   CheckSquare,
   Gamepad2,
   BookOpen,
-  ChefHat,
+  Layers,
   ChevronRight
 } from "lucide-vue-next";
 
@@ -33,25 +34,97 @@ onMounted(() => {
   void reviewStore.refresh();
 });
 
-const allQuickActions = [
-  { label: "新增资料", desc: "快速记录想法和知识", icon: Plus, to: "/editor", color: "bg-brand-50 text-brand-600" },
-  { label: "AI 整理", desc: "提炼重点与行动项", icon: Sparkles, to: "/assistant", color: "bg-violet-50 text-violet-600" },
-  { label: "资料问答", desc: "基于资料查找答案", icon: MessageCircleQuestion, to: "/assistant", color: "bg-emerald-50 text-emerald-600" },
-  { label: "学习复习", desc: "把知识变成记忆卡片", icon: GraduationCap, to: "/study", color: "bg-amber-50 text-amber-600" },
-  { label: "语法学习", desc: "50 个语法点，可生成卡片", icon: BookOpen, to: "/study/grammar", color: "bg-indigo-50 text-indigo-600" },
-  { label: "单词闯关", desc: "10 题一组，错词自动复习", icon: Gamepad2, to: "/study/quest", color: "bg-rose-50 text-rose-600" },
-  { label: "今天吃什么", desc: "生成一周菜单与购物清单", icon: ChefHat, to: "/kitchen/plan", color: "bg-orange-50 text-orange-600" }
+/**
+ * 首页快捷入口。
+ *
+ * 整合时发现并修掉的问题：
+ * - 「AI 整理」和「资料问答」都跳 /assistant，且不带参数 —— 到那儿永远是同一个「问答」Tab，
+ *   所谓「AI 整理」其实名不副实。现在带 ?tab=summary / ?tab=qa，落到对应 Tab。
+ * - 「学习复习」跳 /study（概览页），还得再点一次才进卡片复习；改成直达 /study/cards。
+ * - 「单词闯关」用了旧路径 /study/quest，靠路由 redirect 兜着；改成直达 /study/play/quest 的上级入口。
+ * - 缺了「文件导入」（/import）这个真实存在的功能；学习侧也没有「单词表」和「趣味学习」总入口。
+ * - 端内显隐原来是 startsWith("/kitchen") + 三个硬编码路径，加新项容易漏 —— 改成显式 minitool 标记。
+ */
+interface QuickAction {
+  label: string;
+  desc: string;
+  icon: unknown;
+  to: string;
+  color: string;
+  /** 端内（小工具离线包）是否展示：依赖在线词库/AI 的一律关掉 */
+  minitool?: boolean;
+}
+
+const allQuickActions: QuickAction[] = [
+  {
+    label: "新增资料",
+    desc: "快速记录想法和知识",
+    icon: Plus,
+    to: "/editor",
+    color: "bg-brand-50 text-brand-600",
+    minitool: true
+  },
+  {
+    label: "文件导入",
+    desc: "把 PDF / 文档导成资料",
+    icon: Upload,
+    to: "/import",
+    color: "bg-sky-50 text-sky-600",
+    minitool: false
+  },
+  {
+    label: "AI 整理",
+    desc: "提炼摘要与重点",
+    icon: Sparkles,
+    to: "/assistant?tab=summary",
+    color: "bg-violet-50 text-violet-600",
+    minitool: true
+  },
+  {
+    label: "资料问答",
+    desc: "基于资料找答案",
+    icon: MessageCircleQuestion,
+    to: "/assistant?tab=qa",
+    color: "bg-emerald-50 text-emerald-600",
+    minitool: true
+  },
+  {
+    label: "卡片复习",
+    desc: "按遗忘曲线排今天要复习的",
+    icon: GraduationCap,
+    to: "/study/cards",
+    color: "bg-amber-50 text-amber-600",
+    minitool: true
+  },
+  {
+    label: "单词学习",
+    desc: "词库、发音与例句",
+    icon: BookOpen,
+    to: "/study/words",
+    color: "bg-indigo-50 text-indigo-600",
+    minitool: false
+  },
+  {
+    label: "趣味学习",
+    desc: "球球 / 跑酷 / 配对等小游戏",
+    icon: Gamepad2,
+    to: "/study/play",
+    color: "bg-rose-50 text-rose-600",
+    minitool: false
+  },
+  {
+    label: "今天吃什么",
+    desc: "生成一周菜单与购物清单",
+    icon: Layers,
+    to: "/kitchen/plan",
+    color: "bg-orange-50 text-orange-600",
+    minitool: false
+  }
 ];
 
-/** 端内无网络、知识包加载不了，语法与闯关两个快捷入口不渲染 */
+/** 端内只留不依赖在线词库/导入的功能 */
 const quickActions = computed(() =>
-  IS_MINITOOL
-    ? allQuickActions.filter(
-        (a) =>
-          !a.to.startsWith("/kitchen") &&
-          !["/study/grammar", "/study/idiom", "/study/quest"].includes(a.to)
-      )
-    : allQuickActions
+  IS_MINITOOL ? allQuickActions.filter((a) => a.minitool) : allQuickActions
 );
 
 const stats = computed(() => [
