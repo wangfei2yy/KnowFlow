@@ -14,15 +14,24 @@ import { IS_MINITOOL } from "@/utils/runtime";
 
 type Loader = () => Promise<unknown>;
 
-/** 顺序 = 用户最可能点开的顺序，靠前的更早发出 */
-const HOT: Loader[] = [
+/**
+ * 主级：底部/侧边导航的五个目的地 —— 用户最常点，chunk 不在就「点了没反应」。
+ * 这些优先预取，首屏 load 后就开始。
+ */
+const PRIMARY: Loader[] = [
   () => import("@/pages/LibraryPage.vue"),
   () => import("@/pages/StudyLayout.vue"),
   () => import("@/pages/StudyOverview.vue"),
   () => import("@/pages/TasksPage.vue"),
   () => import("@/pages/SettingsPage.vue"),
-  () => import("@/pages/PlayHomePage.vue"),
   () => import("@/pages/AssistantPage.vue")
+];
+
+/** 次级：从导航再往下一层才到，晚一点预取，别和首屏抢带宽 */
+const SECONDARY: Loader[] = [
+  () => import("@/pages/PlayHomePage.vue"),
+  () => import("@/pages/WordPage.vue"),
+  () => import("@/pages/IdiomPage.vue")
 ];
 
 function shouldPrefetch(): boolean {
@@ -39,14 +48,19 @@ function shouldPrefetch(): boolean {
 export function prefetchHotRoutes(): void {
   if (!shouldPrefetch()) return;
 
-  const run = () => {
-    // 每个间隔 120ms 触发：既不会一次打满连接池把带宽从首屏抢走，
-    // 又能保证「首屏出来后 1 秒内」常用模块都已就绪（点击时才不会卡）
-    HOT.forEach((load, i) => {
+  const fire = (list: Loader[], gap: number) => {
+    list.forEach((load, i) => {
       window.setTimeout(() => {
         load().catch(() => undefined);
-      }, i * 120);
+      }, i * gap);
     });
+  };
+
+  const run = () => {
+    // 主级 80ms 一个：首屏已经 paint 完，尽快把这几个 nav chunk 备好
+    fire(PRIMARY, 80);
+    // 次级推到 1.5s 之后，避免和首屏/主级抢带宽
+    window.setTimeout(() => fire(SECONDARY, 120), 1500);
   };
 
   const idle = (cb: () => void) => {
@@ -57,10 +71,10 @@ export function prefetchHotRoutes(): void {
   };
 
   /**
-   * 必须等 load 之后再等 1.2s：首屏的字体/图标还在抢带宽，
-   * 弱网下过早预取会把首屏拖慢（用户看到的就是「一直在打开资料库」）。
+   * 等 load 之后再等 300ms：给首屏的图标/字体让路，但别等太久 ——
+   * 用户往往首屏一出来就去点导航，chunk 没就绪就会「点了没反应」。
    */
-  const schedule = () => window.setTimeout(() => idle(run), 1200);
+  const schedule = () => window.setTimeout(() => idle(run), 300);
   if (document.readyState === "complete") schedule();
   else window.addEventListener("load", schedule, { once: true });
 }

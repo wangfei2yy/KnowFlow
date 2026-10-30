@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted } from "vue";
+import { onMounted, ref } from "vue";
 import AppSidebar from "@/components/AppSidebar.vue";
 import Toast from "@/components/Toast.vue";
 import CompanionWidget from "@/components/CompanionWidget.vue";
@@ -9,9 +9,36 @@ import ErrorBoundary from "@/components/ErrorBoundary.vue";
 import { useDocumentStore } from "@/stores/documentStore";
 import { useAppStore } from "@/stores/appStore";
 import { Menu, Search } from "lucide-vue-next";
+import { useRouter } from "vue-router";
 
 const docStore = useDocumentStore();
 const appStore = useAppStore();
+const router = useRouter();
+
+/**
+ * 路由切换中的指示条。
+ *
+ * 为什么需要：路由是懒加载的，chunk 没到位时点导航，页面**一点反馈都没有**，
+ * 用户会以为「点了没反应」，于是反复点。有了这条顶部细条，至少知道「正在过去」。
+ */
+const navigating = ref(false);
+let navTimer = 0;
+
+router.beforeEach(() => {
+  // 300ms 内加载完就不显示，避免闪一下
+  window.clearTimeout(navTimer);
+  navTimer = window.setTimeout(() => (navigating.value = true), 180);
+});
+
+router.afterEach(() => {
+  window.clearTimeout(navTimer);
+  navigating.value = false;
+});
+
+router.onError(() => {
+  window.clearTimeout(navTimer);
+  navigating.value = false;
+});
 
 /** 品牌图标（public/icons 下，随 base 走，兼容子路径部署） */
 const logoSrc = `${import.meta.env.BASE_URL}icons/icon-192.png`;
@@ -50,6 +77,14 @@ function openSearch() {
       </header>
 
       <main id="main" class="flex-1 pb-16 lg:pb-0">
+        <!-- 路由切换进度条：chunk 加载中给个明确反馈，避免「点了没反应」 -->
+        <div
+          v-if="navigating"
+          class="fixed inset-x-0 top-0 z-40 h-0.5 overflow-hidden bg-brand-100"
+          aria-hidden="true"
+        >
+          <div class="kf-route-bar h-full bg-brand-600"></div>
+        </div>
         <ErrorBoundary>
           <router-view />
         </ErrorBoundary>
