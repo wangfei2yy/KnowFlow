@@ -69,8 +69,15 @@ function compress(file, buffer, encoding) {
 function cacheControl(pathname) {
   // 带内容哈希：可以放心长期缓存
   if (pathname.startsWith("/assets/")) return "public, max-age=31536000, immutable";
-  // index.html 与 sw.js 必须即时更新，否则用户拿不到新版本
-  if (pathname === "/" || pathname.endsWith(".html") || pathname.endsWith("sw.js")) return "no-cache";
+  // index.html / sw.js / version.json 必须即时更新，否则用户拿不到新版本
+  if (
+    pathname === "/" ||
+    pathname.endsWith(".html") ||
+    pathname.endsWith("sw.js") ||
+    pathname.endsWith("version.json")
+  ) {
+    return "no-cache";
+  }
   // 知识包文件名固定但内容会随构建变：短缓存，兼顾速度与更新
   return "public, max-age=600";
 }

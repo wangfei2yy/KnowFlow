@@ -60,7 +60,22 @@ if (entry) {
   ok(!code.includes("PDFDocumentProxy"), "入口包不应含 pdfjs（应留在按需加载的 chunk 里）");
 }
 
-// 6) 网页构建不应残留小工具的替身模块
+// 6) 版本自检：version.json 与 network-first 的 SW
+const versionPath = `${DIST}/version.json`;
+ok(existsSync(versionPath), "应产出 dist/version.json（用于页面自检是否旧版本）");
+if (existsSync(versionPath)) {
+  const v = JSON.parse(readFileSync(versionPath, "utf8"));
+  ok(!!v.buildId, "version.json 应包含 buildId");
+}
+const swPath = `${DIST}/sw.js`;
+if (existsSync(swPath)) {
+  const sw = readFileSync(swPath, "utf8");
+  ok(sw.includes("SHELL_MAX_AGE"), "sw.js 应对缓存的壳设保鲜期（过期走网络，避免长期停在旧版本）");
+  ok(sw.includes("/sw.js"), "sw.js 不应把自己也缓存（否则新版本永远装不上）");
+  ok(!sw.includes("knowflow-shell-v2"), "sw.js 的缓存版本号应已升级（旧缓存会被清掉）");
+}
+
+// 7) 网页构建不应残留小工具的替身模块
 ok(!assets.some((f) => f.includes("stub")), "网页产物不应包含 *stub* 替身 chunk");
 
 if (failed.length) {

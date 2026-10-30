@@ -27,6 +27,7 @@ import {
   type GroupStat
 } from "@/services/dataCleanup";
 import { downloadText } from "@/utils/download";
+import { forceUpdate } from "@/utils/appUpdate";
 import { downloadJSON } from "@/utils/download";
 import { IS_MINITOOL } from "@/utils/runtime";
 import { OpenAICompatibleProvider } from "@/services/ai/OpenAICompatibleProvider";
@@ -311,6 +312,12 @@ async function handleExportAnki() {
   const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, "");
   downloadText(cardsToAnkiCsv(cards), `knowflow-cards-${stamp}.csv`, "text/csv;charset=utf-8");
   appStore.showToast(`已导出 ${cards.length} 张卡片`, "success");
+}
+
+/** 强制拉新版本：清掉 SW 与离线缓存后重载（手机上「还是旧界面」时用） */
+async function handleForceUpdate() {
+  appStore.showToast("正在重新加载最新版本…", "info");
+  await forceUpdate();
 }
 
 function clearApiKey() {
@@ -737,6 +744,16 @@ async function clearAllData() {
         <li v-if="!IS_MINITOOL">使用 AI 功能时，会先告知将发送的内容，且需你主动操作。</li>
         <li>本地存储不等于加密保险箱，请勿在资料中存放敏感信息。</li>
       </ul>
+      <!-- 版本兜底：手机自带浏览器偶尔会一直用离线缓存的旧版本 -->
+      <div v-if="!IS_MINITOOL" class="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3">
+        <div class="min-w-0">
+          <div class="text-[13px] font-medium text-slate-600">界面还是旧版本？</div>
+          <p class="text-[11px] text-slate-400">清掉离线缓存并重新加载，资料不会受影响</p>
+        </div>
+        <button class="shrink-0 rounded-lg border border-slate-200 px-2.5 py-1 text-[11px] text-slate-500 transition hover:border-brand-300 hover:text-brand-600" @click="handleForceUpdate">
+          检查更新
+        </button>
+      </div>
     </div>
 
     <!-- 数据管理：分区折叠 + 分类清除 -->

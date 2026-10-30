@@ -1,19 +1,28 @@
 /* KnowFlow Service Worker：应用壳 + 静态资源 + 知识包缓存，不碰接口请求。
  *
- * 缓存策略按「第二次打开应该几乎瞬时」设计：
- * - 页面导航：stale-while-revalidate —— 先给缓存（秒开），后台拉新版本下次用
+ * 缓存策略（兼顾「秒开」和「改了就生效」）：
+ * - 页面导航：**缓存壳 5 分钟内直接给**（秒开）；超过 5 分钟就网络优先，
+ *   保证发版后下一次打开必定是新版本。弱网/离线时才回落缓存。
+ *   之前是纯「缓存优先 + 后台更新」：二次打开确实快，但发版后用户会一直看到旧 HTML
+ *   （新构建资源名变了，旧 HTML 仍指向旧文件），症状就是「改的东西没生效」
+ *   「已经修掉的黄底又出现了」。
  * - /assets/*（文件名带内容哈希）：cache-first，永久有效
- * - /packs/*.json（词库、食谱、食材）：stale-while-revalidate，先给旧的再更新
- * - 其余接口（/api、AI 调用）：完全不拦截
+ * - /packs/*.json（词库、食谱、食材）：stale-while-revalidate
+ * - sw.js 自身：不拦截（否则新版本可能一天都装不上）
  */
-const CACHE = "knowflow-shell-v2";
+const CACHE = "knowflow-shell-v3";
 const SHELL = ["./", "./index.html"];
+/** 缓存壳的保鲜期：超过它就走网络，避免长期停在旧版本 */
+const SHELL_MAX_AGE = 5 * 60 * 1000;
+/** 网络等待上限：超时先用缓存，别让用户干等 */
+const NETWORK_TIMEOUT = 2500;
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches
       .open(CACHE)
       .then((cache) => cache.addAll(SHELL))
+      .then(() => markShellFetched())
       .catch(() => undefined)
       .then(() => self.skipWaiting())
   );
@@ -28,21 +37,61 @@ self.addEventListener("activate", (event) => {
   );
 });
 
-/** 后台更新缓存，失败静默（离线时不该影响正在返回的旧内容） */
-function revalidate(req, cacheKey) {
-  return fetch(req)
-    .then((res) => {
-      // 只缓存成功响应，避免把 404 / 授权失败页缓存下来
-      if (res.ok) {
-        const copy = res.clone();
-        caches
-          .open(CACHE)
-          .then((cache) => cache.put(cacheKey ?? req, copy))
-          .catch(() => undefined);
-      }
-      return res;
-    })
-    .catch(() => undefined);
+/** 记录壳的抓取时间（存成一条缓存项，SW 被回收也不会丢） */
+async function markShellFetched() {
+  const cache = await caches.open(CACHE);
+  await cache.put("./shell-at", new Response(String(Date.now())));
+}
+
+/** 距离上次抓到壳过去了多久（毫秒）；没有记录就当很久（走网络） */
+async function shellAge() {
+  try {
+    const cache = await caches.open(CACHE);
+    const res = await cache.match("./shell-at");
+    if (!res) return Number.POSITIVE_INFINITY;
+    return Date.now() - Number(await res.text());
+  } catch {
+    return Number.POSITIVE_INFINITY;
+  }
+}
+
+/** 拉网络并把 HTML 写回缓存 */
+function fetchAndCacheShell(req) {
+  return fetch(req, { cache: "no-cache" }).then((res) => {
+    if (res.ok) {
+      const copy = res.clone();
+      caches
+        .open(CACHE)
+        .then((cache) => cache.put("./index.html", copy))
+        .then(() => markShellFetched())
+        .catch(() => undefined);
+    }
+    return res;
+  });
+}
+
+function cachedShell(req) {
+  return caches.match(req, { ignoreSearch: true }).then((hit) => hit || caches.match("./index.html"));
+}
+
+/** 导航：新鲜的壳直接给缓存，过期的壳走网络（超时回落缓存） */
+async function resolveNavigation(req) {
+  const cached = await cachedShell(req);
+  const age = await shellAge();
+
+  // 还没有缓存（首次访问）或壳已过期：网络优先
+  if (!cached || age > SHELL_MAX_AGE) {
+    const timeout = new Promise((resolve) => setTimeout(() => resolve(null), NETWORK_TIMEOUT));
+    const network = fetchAndCacheShell(req).catch(() => null);
+    const res = (await Promise.race([network, timeout])) || cached;
+    if (res) return res;
+    // 网络和缓存都没有，再给一次网络（至少把错误暴露出来）
+    return fetch(req).catch(() => Response.error());
+  }
+
+  // 壳还新鲜：先给缓存，同时后台更新（下次打开就是最新）
+  fetchAndCacheShell(req).catch(() => undefined);
+  return cached;
 }
 
 self.addEventListener("fetch", (event) => {
@@ -52,15 +101,11 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
 
-  // 页面导航：先给缓存，再后台更新
+  // Service Worker 自身永远走网络，否则新版本可能一天都装不上
+  if (url.pathname.endsWith("/sw.js")) return;
+
   if (req.mode === "navigate") {
-    event.respondWith(
-      caches.match(req, { ignoreSearch: true }).then((hit) => {
-        const network = revalidate(req, "./index.html");
-        // 有缓存就立即返回，同时把网络结果写回（下次访问即是新版本）
-        return hit || network.then((res) => res || caches.match("./index.html")).then((res) => res || Response.error());
-      })
-    );
+    event.respondWith(resolveNavigation(req));
     return;
   }
 
@@ -70,7 +115,15 @@ self.addEventListener("fetch", (event) => {
       caches.match(req, { ignoreSearch: true }).then(
         (hit) =>
           hit ||
-          revalidate(req).then((res) => res || Response.error())
+          fetch(req)
+            .then((res) => {
+              if (res.ok) {
+                const copy = res.clone();
+                caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => undefined);
+              }
+              return res;
+            })
+            .catch(() => Response.error())
       )
     );
     return;
@@ -82,7 +135,15 @@ self.addEventListener("fetch", (event) => {
       caches.match(req, { ignoreSearch: true }).then(
         (hit) =>
           hit ||
-          revalidate(req).then((res) => res || Response.error())
+          fetch(req)
+            .then((res) => {
+              if (res.ok) {
+                const copy = res.clone();
+                caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => undefined);
+              }
+              return res;
+            })
+            .catch(() => Response.error())
       )
     );
   }

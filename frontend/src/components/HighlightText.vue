@@ -34,7 +34,7 @@ const parts = computed(() => {
     <template v-for="(p, i) in parts" :key="i">
       <mark
         v-if="p.hit"
-        class="rounded-[3px] bg-amber-200/70 px-[1px] text-slate-900 dark:bg-amber-300/25 dark:text-amber-100"
+        class="rounded-[3px] bg-amber-200 px-[1px] text-slate-900 dark:bg-amber-700 dark:text-amber-50"
       >{{ p.text }}</mark>
       <span v-else>{{ p.text }}</span>
     </template>

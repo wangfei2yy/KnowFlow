@@ -70,16 +70,25 @@ function inlineEntryCssPlugin(): Plugin {
         }
       );
       if (next !== html) writeFileSync(htmlPath, next);
+      // 版本自检文件：SW 缓存了旧 HTML 时，页面靠它发现自己过期了
+      writeFileSync(
+        `${dir}/version.json`,
+        JSON.stringify({ buildId: BUILD_ID, builtAt: new Date().toISOString() })
+      );
     }
   };
 }
+
+/** 这次构建的版本号：写进 JS（define）也写进 dist/version.json，页面加载后对比两者判断是否旧版本 */
+const BUILD_ID = `${Date.now().toString(36)}`;
 
 export default defineConfig({
   plugins: [vue(), ...(isMiniTool ? [minitoolHtmlPlugin()] : [inlineEntryCssPlugin()])],
   // 使用相对路径，便于部署到任意静态托管（含子路径）
   base: "./",
   define: {
-    __KF_MINITOOL__: JSON.stringify(isMiniTool)
+    __KF_MINITOOL__: JSON.stringify(isMiniTool),
+    __BUILD_ID__: JSON.stringify(BUILD_ID)
   },
   resolve: {
     alias: {
