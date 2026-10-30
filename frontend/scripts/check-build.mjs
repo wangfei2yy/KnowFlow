@@ -76,6 +76,17 @@ if (existsSync(swPath)) {
   ok(sw.includes("new Request(req.url)"), "sw.js 内部 fetch 必须用 new Request 绕过自身，否则 fetch 递归卡死页面");
 }
 
+// 6.5) 服务端自救脚本：缺失的 /assets/*.js 不能返回 404
+const serverPath = "server.mjs";
+if (existsSync(serverPath)) {
+  const server = readFileSync(serverPath, "utf8");
+  ok(server.includes("RECOVERY_SCRIPT"), "server.mjs 应内置 RECOVERY_SCRIPT（旧客户端自救）");
+  ok(
+    /startsWith\("\/assets\/"\)/.test(server),
+    "server.mjs 应区分 /assets/ 缺失（自愈）与其它 404"
+  );
+}
+
 // 7) 网页构建不应残留小工具的替身模块
 ok(!assets.some((f) => f.includes("stub")), "网页产物不应包含 *stub* 替身 chunk");
 

@@ -42,6 +42,37 @@ const MIME = {
   ".map": "application/json; charset=utf-8"
 };
 
+/**
+ * 旧客户端自救脚本。
+ *
+ * 触发条件：请求了不存在的 /assets/*.js —— 说明页面 HTML 是旧的（引用上一版构建的哈希）。
+ * 这段脚本会：清空 Cache Storage → 注销 Service Worker → 带 `_v=` 重载页面。
+ * 这样用户不需要手动「清除站点数据」，卡住的设备下一次加载就自动回到最新版。
+ */
+const RECOVERY_SCRIPT = `/* KnowFlow: stale-asset recovery */
+(async () => {
+  try {
+    if (typeof caches !== "undefined") {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((k) => caches.delete(k)));
+    }
+  } catch (e) {}
+  try {
+    if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map((r) => r.unregister()));
+    }
+  } catch (e) {}
+  try {
+    const u = new URL(location.href);
+    u.searchParams.set("_v", String(Date.now()));
+    location.replace(u.toString());
+  } catch (e) {
+    location.reload();
+  }
+})();
+`;
+
 /** 预压缩缓存：文件内容不变就一直复用，避免每次请求都压一遍 */
 const compressed = new Map();
 
@@ -107,10 +138,23 @@ const server = createServer((req, res) => {
   const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
   let file = resolveFile(url.pathname);
 
-  // 静态资源缺失才回退首页；/assets 下的哈希文件缺失应当 404，
-  // 回退成 HTML 会让浏览器把 JS 当 HTML 解析，反而掩盖问题
+  // 静态资源缺失才回退首页；/assets 下的哈希文件缺失不能回退成 HTML
+  // （浏览器会把 JS 当 HTML 解析），走下面的「自愈脚本」
   if (!file && !url.pathname.startsWith("/assets/")) file = join(ROOT, "index.html");
   if (!file) {
+    // 缺失的 JS/CSS chunk：说明客户端拿着**旧 HTML**（引用的是上一版构建的文件名）。
+    // 这时如果老实返回 404，入口脚本就加载失败、一行 JS 都跑不起来，
+    // 页面会永远卡在骨架屏，且 Service Worker 也无法自我更新（注册代码就在那个包体里）。
+    // 所以改成返回一段「清缓存 + 注销 SW + 重载」的脚本，让旧客户端自己恢复。
+    if (/\.(js|mjs)$/i.test(url.pathname)) {
+      res.writeHead(200, {
+        "Content-Type": "text/javascript; charset=utf-8",
+        "Cache-Control": "no-store",
+        "X-Content-Type-Options": "nosniff"
+      });
+      res.end(RECOVERY_SCRIPT);
+      return;
+    }
     res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
     res.end("Not Found");
     return;
