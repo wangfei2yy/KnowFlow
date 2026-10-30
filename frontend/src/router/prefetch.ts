@@ -56,7 +56,11 @@ export function prefetchHotRoutes(): void {
     else window.setTimeout(cb, 1200);
   };
 
-  // 必须等 load：首屏的字体/图标还在抢带宽，此时预取只会让首屏更慢
-  if (document.readyState === "complete") idle(run);
-  else window.addEventListener("load", () => idle(run), { once: true });
+  /**
+   * 必须等 load 之后再等 1.2s：首屏的字体/图标还在抢带宽，
+   * 弱网下过早预取会把首屏拖慢（用户看到的就是「一直在打开资料库」）。
+   */
+  const schedule = () => window.setTimeout(() => idle(run), 1200);
+  if (document.readyState === "complete") schedule();
+  else window.addEventListener("load", schedule, { once: true });
 }

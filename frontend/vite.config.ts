@@ -167,7 +167,10 @@ export default defineConfig({
              * 以前所有第三方库和业务代码挤在 index-*.js 里，改一行文案整个 110KB 都要重下。
              * 现在框架、图标、工具库各有独立 chunk，改业务代码时它们都还在缓存里。
              */
+            // KF_NO_SPLIT=1 时把所有依赖并进入口：请求数从 4 降到 1
+            // （高延迟网络下，少一个往返比多 40KB 更值，用测速数据决定）
             manualChunks(id: string) {
+              if (process.env.KF_NO_SPLIT) return;
               if (!id.includes("node_modules")) return;
               if (id.includes("pdfjs-dist")) return "pdfjs";
               if (id.includes("dexie")) return "dexie";

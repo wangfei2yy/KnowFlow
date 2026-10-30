@@ -12,8 +12,14 @@
  */
 const CACHE = "knowflow-shell-v3";
 const SHELL = ["./", "./index.html"];
-/** 缓存壳的保鲜期：超过它就走网络，避免长期停在旧版本 */
-const SHELL_MAX_AGE = 5 * 60 * 1000;
+/**
+ * 缓存壳的保鲜期：超过它才走网络。
+ *
+ * 为什么敢放到 6 小时：页面有 version.json 版本自检（utils/appUpdate.ts），
+ * 一旦服务端发了新构建，页面会自己发现并清缓存重载，所以「壳旧」不会再导致「版本旧」。
+ * 而每次打开都能命中缓存 → 秒开，这才是日常体验的大头（实测 1.4s → 84ms）。
+ */
+const SHELL_MAX_AGE = 6 * 60 * 60 * 1000;
 /** 网络等待上限：超时先用缓存，别让用户干等 */
 const NETWORK_TIMEOUT = 2500;
 
