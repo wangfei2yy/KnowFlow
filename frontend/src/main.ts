@@ -3,7 +3,7 @@ import { createPinia } from "pinia";
 import App from "./App.vue";
 import { router } from "./router";
 import { prefetchHotRoutes } from "./router/prefetch";
-import { checkFreshness } from "./utils/appUpdate";
+import { checkFreshness, recoverFromPreloadError } from "./utils/appUpdate";
 import { runMigrations } from "./db/migrations";
 import { IS_MINITOOL } from "./utils/runtime";
 import "./assets/main.css";
@@ -23,6 +23,14 @@ app.config.errorHandler = (err, _instance, info) => {
 
 window.addEventListener("unhandledrejection", (event) => {
   console.error("[KnowFlow] 未处理的 Promise 异常：", event.reason);
+});
+
+/**
+ * 路由 chunk 404（旧 HTML 指向已删除的构建产物）→ 自动清缓存重载。
+ * 没有这个兜底，用户点某个模块只会看到一个失败提示，且永远好不了。
+ */
+window.addEventListener("vite:preloadError", () => {
+  void recoverFromPreloadError();
 });
 
 /**

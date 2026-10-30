@@ -53,3 +53,18 @@ export async function checkFreshness(buildId: string): Promise<void> {
     /* 离线或 version.json 不存在（小工具包）都忽略 */
   }
 }
+
+/**
+ * 动态 chunk 加载失败的自救。
+ *
+ * 场景：页面跑的是旧 HTML，某个路由 chunk 已被新构建替换（文件名带哈希，旧的删了），
+ * 点过去 404。Vite 会抛 `vite:preloadError`。这里清缓存重载一次；
+ * 同一会话里只尝试一次，避免死循环。
+ */
+export async function recoverFromPreloadError(): Promise<void> {
+  const key = "knowflow.preload.recovered";
+  if (sessionStorage.getItem(key) === "1") return;
+  sessionStorage.setItem(key, "1");
+  console.warn("[KnowFlow] 页面资源已过期，正在刷新到最新版本…");
+  await forceUpdate();
+}

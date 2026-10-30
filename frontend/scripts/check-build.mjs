@@ -70,9 +70,9 @@ if (existsSync(versionPath)) {
 const swPath = `${DIST}/sw.js`;
 if (existsSync(swPath)) {
   const sw = readFileSync(swPath, "utf8");
-  ok(sw.includes("SHELL_MAX_AGE"), "sw.js 应对缓存的壳设保鲜期（过期走网络，避免长期停在旧版本）");
+  ok(!sw.includes("SHELL_MAX_AGE"), "sw.js 导航不应再有「缓存壳」捷径（HTML 必须永远来自网络）");
   ok(sw.includes("/sw.js"), "sw.js 不应把自己也缓存（否则新版本永远装不上）");
-  ok(!sw.includes("knowflow-shell-v2"), "sw.js 的缓存版本号应已升级（旧缓存会被清掉）");
+  ok(!sw.includes("knowflow-shell-v2") && !sw.includes("knowflow-shell-v3"), "sw.js 的缓存版本号应已升级（旧缓存会被清掉）");
   ok(sw.includes("new Request(req.url)"), "sw.js 内部 fetch 必须用 new Request 绕过自身，否则 fetch 递归卡死页面");
 }
 
