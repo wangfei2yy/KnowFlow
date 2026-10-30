@@ -12,6 +12,35 @@ import { healForStreak, maxLivesOf } from "@/games/lives";
 
 export type { WordEntry };
 
+/** 难度档：只改「场上有几个待选单词」，其它规则一律不动 */
+export type DifficultyId = "easy" | "normal" | "hard" | "expert";
+
+export interface OrbDifficulty {
+  id: DifficultyId;
+  name: string;
+  /** 场上待选单词数（含唯一的正确答案） */
+  options: number;
+  desc: string;
+}
+
+/**
+ * 四档难度 = 四个数字。
+ *
+ * 之前固定 10 个球，新手第一局就得在一屏小字里找一个词，劝退；老手又觉得太送。
+ * 现在把「干扰项密度」拆出来当难度：选项目越少，扫视成本越低。
+ * 顺带把场地跟着收一点（见 fieldRadius），否则 4 个球铺在 10 个球的场地里会显得空旷。
+ */
+export const DIFFICULTIES: OrbDifficulty[] = [
+  { id: "easy", name: "简单", options: 4, desc: "场上 4 个词，先熟悉手感" },
+  { id: "normal", name: "普通", options: 6, desc: "6 个词，干扰适中" },
+  { id: "hard", name: "复杂", options: 8, desc: "8 个词，形近词更多" },
+  { id: "expert", name: "困难", options: 10, desc: "10 个词，满场干扰" }
+];
+
+export function difficultyOf(id?: string): OrbDifficulty {
+  return DIFFICULTIES.find((d) => d.id === id) ?? DIFFICULTIES[1];
+}
+
 /** 一局参数，集中在一处方便调手感 */
 export const ORB = {
   /** 初始半径 */
@@ -24,7 +53,7 @@ export const ORB = {
   maxR: 76,
   /** 食物球半径（屏幕上要放得下英文单词，太小会看不清） */
   foodR: 27,
-  /** 场上食物球数量：之前 14 个太密，选项一多反而难找 */
+  /** 默认待选球数（= 困难档；建局时会被难度覆盖） */
   foodCount: 10,
   /** 吃对放大倍率（复利） */
   grow: 1.08,
@@ -34,10 +63,16 @@ export const ORB = {
   minR: 24,
   /**
    * 屏幕上的移动速度（px/秒）。世界速度 = speedBase / cameraScale(r)，
-   * 所以不管球多大，看起来的移动快慢都一样。
-   * 原来写成 speedBase/(1+r/160)，球一大就越来越慢（r=76 时只剩 68%），是另一个反馈点。
+   * 所以不管球多大，**看起来的移动快慢都一样** —— 这就是「吃越多越慢」的修法。
+   *
+   * 两处曾经踩过的坑：
+   * 1. 早期写成 speedBase/(1+r/160)，球一大就真的变慢（r=76 时只剩 68%）；
+   * 2. 只改公式还不够：主循环 dt 上限 0.05，掉到 20fps 以下时每帧只算 50ms，
+   *    实际速度会被悄悄砍掉一截。现在页面用固定步长累加，跟帧率彻底解耦。
+   *
+   * 250 有点温吞（手机上要 2.8 秒才穿过一屏），提到 300。
    */
-  speedBase: 250,
+  speedBase: 300,
   /** 初始命（上限见 games/lives.ts 的 LIFE_RULE：连对 3 个回 1 格，最多 5 格） */
   lives: 3,
   /** 时长（秒） */
@@ -82,6 +117,9 @@ export interface OrbState {
   player: OrbPlayer;
   foods: Food[];
   pool: WordEntry[];
+  /** 本局难度与「场上待选数」（存进 state，补位时才知道该补到几个） */
+  difficulty: DifficultyId;
+  options: number;
   /** 目标词的取用顺序（洗牌后的下标），循环使用 */
   order: number[];
   orderPos: number;
@@ -118,6 +156,8 @@ export interface OrbConfig {
   /** 练习模式：不限时（duration 视为无限） */
   untimed?: boolean;
   lives?: number;
+  /** 难度档（默认普通档 6 个词） */
+  difficulty?: DifficultyId;
   /** 指定随机种子，便于复现 */
   seed?: number;
 }
@@ -156,10 +196,16 @@ export function cameraScale(r: number): number {
   return Math.min(1, Math.max(0.5, s));
 }
 
-/** 场上食物分布半径：随球长大一起外扩，避免"球大了却没东西吃" */
-export function fieldRadius(r: number): number {
-  // 球少了，场地也收一点，保持「球间距」和之前接近，不至于让人满地图找
-  return 450 + r * 1.7;
+/**
+ * 场上食物分布半径：随球长大一起外扩，避免"球大了却没东西吃"。
+ *
+ * 再按选项数收敛：4 个球铺在 10 个球的场地上会显得空旷、要走很久才碰到一个，
+ * 用 √(选项/10) 缩放，让「球间距」在各档之间保持接近（密度守恒）。
+ */
+export function fieldRadius(r: number, options: number = ORB.foodCount): number {
+  const base = 450 + r * 1.7;
+  const density = Math.sqrt(Math.max(1, options) / ORB.foodCount);
+  return base * Math.max(0.55, density);
 }
 
 /**
@@ -168,6 +214,11 @@ export function fieldRadius(r: number): number {
  */
 export function moveSpeed(r: number): number {
   return ORB.speedBase / cameraScale(r);
+}
+
+/** 屏幕速度（px/秒）：与半径无关，是恒定值本身。留给单测和调参看 */
+export function screenSpeed(): number {
+  return ORB.speedBase;
 }
 
 // ---------------- 随机数 ----------------
@@ -224,7 +275,7 @@ function nextTarget(s: OrbState): WordEntry | null {
 
 function ringPosition(s: OrbState): { x: number; y: number } {
   const angle = rand(s) * Math.PI * 2;
-  const radius = fieldRadius(s.player.r);
+  const radius = fieldRadius(s.player.r, s.options);
   const dist = radius * (0.45 + 0.5 * rand(s));
   return {
     x: s.player.x + Math.cos(angle) * dist,
@@ -287,7 +338,7 @@ function normalizeFoods(state: OrbState): void {
 /** 补足场上球数（就地 push 进 state.foods） */
 function topUpFoods(state: OrbState): void {
   const foods = state.foods;
-  while (foods.length < ORB.foodCount) {
+  while (foods.length < state.options) {
     foods.push(makeFood(state, distractorWord(state, new Set(foods.map((f) => f.word)))));
   }
 }
@@ -296,12 +347,15 @@ export function createOrbGame(config: OrbConfig): OrbState {
   const usable = config.words.filter((w) => w.w && w.m);
   const duration = config.untimed ? Number.POSITIVE_INFINITY : (config.duration ?? ORB.duration);
   const lives = config.lives ?? ORB.lives;
+  const difficulty = difficultyOf(config.difficulty);
 
   const state: OrbState = {
     phase: "ready",
     player: { x: 0, y: 0, r: ORB.startR, vx: 0, vy: 0 },
     foods: [],
     pool: [],
+    difficulty: difficulty.id,
+    options: difficulty.options,
     order: [],
     orderPos: 0,
     target: null,
@@ -364,8 +418,13 @@ function pushWrongWord(state: OrbState, word: WordEntry): WordEntry[] {
 }
 
 /**
- * 推进一帧。dt 单位秒，上限 50ms——切标签回来时 dt 可能是好几秒，
+ * 推进一帧。dt 单位秒，上限 100ms——切标签回来时 dt 可能是好几秒，
  * 不夹住会让球瞬移穿过所有食物。
+ *
+ * 为什么从 50ms 放宽到 100ms：50ms 意味着只要帧率掉到 20fps 以下，
+ * 每帧只被算作 50ms，实际移动速度就被悄悄砍掉一截 —— 玩家感受到的
+ * 「越玩越慢」有一部分是这么来的（球长大后背景要画的装饰变多，更容易掉帧）。
+ * 页面那边已经改成固定步长累加，这里是第二道保险。
  */
 export function stepOrb(
   prev: OrbState,
@@ -373,7 +432,7 @@ export function stepOrb(
   dir: { x: number; y: number }
 ): OrbState {
   if (prev.phase !== "playing") return prev;
-  const dt = Math.max(0, Math.min(dtRaw, 0.05));
+  const dt = Math.max(0, Math.min(dtRaw, 0.1));
 
   const state: OrbState = {
     ...prev,
@@ -404,7 +463,7 @@ export function stepOrb(
   if (state.shake > 0) state.shake = Math.max(0, state.shake - dt * 2.5);
 
   // 4) 落在视野外的食物回到附近，否则球长大了场上就"没得吃"
-  const field = fieldRadius(state.player.r);
+  const field = fieldRadius(state.player.r, state.options);
   state.foods = state.foods.map((f) => {
     const dist = Math.hypot(f.x - state.player.x, f.y - state.player.y);
     if (dist <= field * 1.35) return f;

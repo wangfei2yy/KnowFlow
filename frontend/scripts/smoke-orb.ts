@@ -16,6 +16,9 @@ import {
   fieldRadius,
   moveSpeed,
   spellSimilarity,
+  difficultyOf,
+  screenSpeed,
+  DIFFICULTIES,
   ORB,
   TIERS,
   type OrbState,
@@ -51,11 +54,11 @@ function eat(state: OrbState, correct: boolean): OrbState {
 }
 
 // ---------------- 1) 建局 ----------------
-const base = createOrbGame({ words, seed: 20261029 });
+const base = createOrbGame({ words, seed: 20261029, difficulty: "expert" });
 ok(base.phase === "ready", "新建应为 ready");
 ok(base.lives === ORB.lives && base.maxLives === LIFE_RULE.cap, `初始 ${ORB.lives} 条命、上限 ${LIFE_RULE.cap}`);
 ok(base.player.r === ORB.startR, "初始半径 40");
-ok(base.foods.length === ORB.foodCount, `场上应有 ${ORB.foodCount} 个球，实际 ${base.foods.length}`);
+ok(base.foods.length === 10, `困难档场上应有 10 个球，实际 ${base.foods.length}`);
 ok(base.foods.filter((f) => f.correct).length === 1, "场上必须恰好 1 个正确球");
 ok(!!base.target, "应有目标词");
 ok(base.pool.length === Math.min(ORB.poolSize, words.length), "词池应截断到 30 个");
@@ -71,7 +74,7 @@ ok(dupCount === 1, `目标词在场上只应出现 1 次，实际 ${dupCount}`);
 ok(new Set(base.foods.map((f) => f.word)).size === base.foods.length, "食物球不应重复用词");
 
 // ---------------- 2) 同一 seed 可复现 ----------------
-const again = createOrbGame({ words, seed: 20261029 });
+const again = createOrbGame({ words, seed: 20261029, difficulty: "expert" });
 ok(
   JSON.stringify(again.foods.map((f) => [f.word, f.correct])) ===
     JSON.stringify(base.foods.map((f) => [f.word, f.correct])),
@@ -88,7 +91,7 @@ ok(s.correct === 1 && s.wrong === 0, "答对计数 +1");
 ok(s.combo === 1 && s.bestCombo === 1, "连击应为 1");
 ok(s.lives === ORB.lives, "答对不扣命");
 ok(s.target!.w !== before.word, "答对后应换目标词");
-ok(s.foods.length === ORB.foodCount, "吃掉一个应立刻补位");
+ok(s.foods.length === s.options, "吃掉一个应立刻补位");
 ok(s.foods.filter((f) => f.correct).length === 1, "换目标后仍应恰好 1 个正确球");
 ok(s.foods.find((f) => f.correct)!.word === s.target!.w, "正确球应换成新目标词");
 ok(s.wrongWords.length === 0, "答对不该记错词");
@@ -145,7 +148,8 @@ let jump = startOrb(createOrbGame({ words, seed: 9 }));
 const posBefore = { x: jump.player.x, y: jump.player.y };
 jump = stepOrb(jump, 5, { x: 1, y: 0 }); // 切标签回来 dt=5s
 const moved = Math.hypot(jump.player.x - posBefore.x, jump.player.y - posBefore.y);
-ok(moved < 30, `dt 应被夹到 50ms，5 秒只该走一小步，实际 ${moved.toFixed(1)}`);
+// 夹到 100ms：速度 300 → 一帧最多 30 世界像素（含加速平滑，约 27）
+ok(moved > 20 && moved < 40, `dt 应被夹到 100ms，5 秒只该走一小步，实际 ${moved.toFixed(1)}`);
 
 // ---------------- 9) 相机 / 层级 / 屏幕速度 ----------------
 ok(cameraScale(ORB.startR) === 1, "初始半径时相机不缩放");
@@ -168,8 +172,9 @@ ok(fieldRadius(40) < fieldRadius(600), "球越大，可吃区域越大");
 
 // 屏幕速度恒定：世界速度 × 缩放 = speedBase
 for (const r of [ORB.startR, ORB.maxR]) {
-  const screenSpeed = moveSpeed(r) * cameraScale(r);
-  ok(Math.abs(screenSpeed - ORB.speedBase) < 1e-6, `r=${r} 时屏幕速度应恒为 ${ORB.speedBase}，实际 ${screenSpeed.toFixed(2)}`);
+  const perSec = moveSpeed(r) * cameraScale(r);
+  ok(Math.abs(perSec - ORB.speedBase) < 1e-6, `r=${r} 时屏幕速度应恒为 ${ORB.speedBase}，实际 ${perSec.toFixed(2)}`);
+  ok(Math.abs(perSec - screenSpeed()) < 1e-6, "屏幕速度应与半径无关（这就是「不变慢」的保证）");
 }
 ok(moveSpeed(ORB.maxR) > moveSpeed(ORB.startR), "球大了世界速度要更快（补偿视野缩小），不能更慢");
 
@@ -177,7 +182,7 @@ ok(moveSpeed(ORB.maxR) > moveSpeed(ORB.startR), "球大了世界速度要更快�
 const sim = spellSimilarity("adapt", "adopt");
 ok(sim > spellSimilarity("adapt", "zebra"), "形近词相似度应更高");
 let pool = startOrb(createOrbGame({ words, seed: 21 }));
-ok(pool.foods.length === ORB.foodCount, "干扰项数量正确");
+ok(pool.foods.length === pool.options, "干扰项数量正确");
 ok(new Set(pool.foods.map((f) => f.word)).size === pool.foods.length, "干扰项不重复");
 
 // ---------------- 11) 展示辅助 ----------------
@@ -223,7 +228,7 @@ for (let i = 0; i < 1000; i++) {
   if (budget.phase === "over") break;
 }
 ok(Number.isFinite(budget.player.x) && Number.isFinite(budget.player.y), "坐标不应变成 NaN");
-ok(budget.foods.length <= ORB.foodCount + 1, "球数不应无限增长");
+ok(budget.foods.length <= budget.options + 1, "球数不应无限增长");
 ok(budget.foods.every((f) => Number.isFinite(f.x) && Number.isFinite(f.y)), "球坐标不应 NaN");
 console.log("12) 跑 1000 帧：得分", budget.score, "正确", budget.correct, "错误", budget.wrong, "球数", budget.foods.length);
 
@@ -277,4 +282,68 @@ ok(eatenCount <= 1, `一帧最多吃一个，实际吃了 ${eatenCount} 个（f2
 
 console.log("14) 半径封顶", ORB.maxR, "，一帧最多吃 1 个");
 
-console.log("\n✅ 球球引擎 14 组断言全部通过");
+// ---------------- 15) 四档难度：4 / 6 / 8 / 10 ----------------
+const wanted: [string, number][] = [
+  ["easy", 4],
+  ["normal", 6],
+  ["hard", 8],
+  ["expert", 10]
+];
+ok(DIFFICULTIES.length === 4, `难度应有 4 档，实际 ${DIFFICULTIES.length}`);
+for (const [id, n] of wanted) {
+  const g = createOrbGame({ words, seed: 77, difficulty: id as never });
+  ok(g.difficulty === id, `${id} 档应写进 state`);
+  ok(g.options === n, `${id} 档应为 ${n} 个待选，实际 ${g.options}`);
+  ok(g.foods.length === n, `${id} 档场上应有 ${n} 个球，实际 ${g.foods.length}`);
+  ok(g.foods.filter((f) => f.correct).length === 1, `${id} 档也要恰好 1 个正确球`);
+  ok(new Set(g.foods.map((f) => f.word)).size === n, `${id} 档的球不能重词`);
+}
+// 选项少时场地跟着收，避免 4 个球铺满 10 个球的场地
+ok(fieldRadius(40, 4) < fieldRadius(40, 10), "简单档场地应比困难档小");
+ok(fieldRadius(40, 10) === fieldRadius(40), "不传选项时按默认档（困难）算");
+// 认不出来的档位回落普通，别把难度弄丢
+ok(difficultyOf("nope").id === "normal", "未知档位应回落普通档");
+ok(difficultyOf(undefined).id === "normal", "不传档位默认普通");
+ok(createOrbGame({ words, seed: 78 }).options === 6, "不指定难度时默认 6 个待选");
+console.log("15) 难度档：", wanted.map(([id, n]) => `${difficultyOf(id).name}${n}`).join(" / "));
+
+// ---------------- 16) 吃再大，屏幕速度也不变 ----------------
+// 直接把半径写死跑 1 秒（不吃东西），比较「走过的屏幕距离」
+function screenTravel(r: number): number {
+  let g = startOrb(createOrbGame({ words, seed: 91, difficulty: "normal", lives: 99 }));
+  g = { ...g, player: { ...g.player, r, x: 0, y: 0, vx: 0, vy: 0 }, foods: [] };
+  for (let i = 0; i < 120; i++) g = stepOrb(g, 1 / 120, { x: 1, y: 0 });
+  return g.player.x * cameraScale(g.player.r);
+}
+const travelStart = screenTravel(ORB.startR);
+const travelMax = screenTravel(ORB.maxR);
+ok(
+  Math.abs(travelStart - travelMax) < 1,
+  `r=40 走 ${travelStart.toFixed(1)}px、r=76 走 ${travelMax.toFixed(1)}px，屏幕距离必须一致`
+);
+ok(travelStart > 200, `1 秒应能走过 ${ORB.speedBase}px 左右（含起步加速），实际 ${travelStart.toFixed(1)}`);
+
+// 帧率掉到 20fps 也不该变慢：用 1/120 固定步长补帧，等价于 60fps
+function travelWithSteps(stepSeconds: number, totalSeconds: number): number {
+  let g = startOrb(createOrbGame({ words, seed: 93, difficulty: "normal", lives: 99 }));
+  g = { ...g, player: { ...g.player, r: ORB.maxR, x: 0, y: 0, vx: 0, vy: 0 }, foods: [] };
+  let acc = 0;
+  let left = totalSeconds;
+  while (left > 0) {
+    // 模拟「每帧真实间隔 = stepSeconds」，再按 1/120 补步 —— 与页面主循环一致
+    acc += stepSeconds;
+    left -= stepSeconds;
+    while (acc >= 1 / 120) {
+      g = stepOrb(g, 1 / 120, { x: 1, y: 0 });
+      acc -= 1 / 120;
+    }
+  }
+  return g.player.x * cameraScale(g.player.r);
+}
+const at60 = travelWithSteps(1 / 60, 1);
+const at20 = travelWithSteps(1 / 20, 1);
+ok(Math.abs(at60 - at20) < 1, `60fps 走 ${at60.toFixed(1)}、20fps 走 ${at20.toFixed(1)}，掉帧不该变慢`);
+
+console.log("16) 1 秒屏幕位移：", travelStart.toFixed(1), "px（起始）→", travelMax.toFixed(1), "px（最大）");
+
+console.log("\n✅ 球球引擎 16 组断言全部通过");

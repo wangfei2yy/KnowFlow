@@ -15,7 +15,15 @@ import { useAppStore } from "@/stores/appStore";
 import { useReviewStore } from "@/stores/reviewStore";
 import { loadPackIndex, loadWords, type PackMeta } from "@/services/knowledgePack";
 import { addWordToReview } from "@/services/quest/wordCards";
-import { saveGameResult, loadPlayPack, savePlayPack, loadUntimed, saveUntimed } from "@/services/gameService";
+import {
+  saveGameResult,
+  loadPlayPack,
+  savePlayPack,
+  loadUntimed,
+  saveUntimed,
+  loadDifficulty,
+  saveDifficulty
+} from "@/services/gameService";
 import {
   createOrbGame,
   startOrb,
@@ -23,8 +31,11 @@ import {
   cameraScale,
   orbAccuracy,
   timeText,
+  difficultyOf,
+  DIFFICULTIES,
   ORB,
   TIERS,
+  type DifficultyId,
   type OrbState
 } from "@/games/orb/engine";
 import { createOrbRenderer, tierName, type OrbRenderer } from "@/games/orb/render";
@@ -60,6 +71,9 @@ const stageEl = ref<HTMLElement | null>(null);
 const result = shallowRef<OrbState | null>(null);
 /** 练习模式：不限时 */
 const untimed = ref(loadUntimed());
+/** 难度档：只影响场上待选单词数（4 / 6 / 8 / 10） */
+const difficulty = ref<DifficultyId>(loadDifficulty() as DifficultyId);
+const difficultyMeta = computed(() => difficultyOf(difficulty.value));
 const banked = ref(0);
 const banner = ref("");
 const joystick = ref<JoystickState>({ active: false, x: 0, y: 0, dx: 0, dy: 0 });
@@ -143,7 +157,7 @@ async function prepare(id: string) {
     const words = await loadWords(id);
     packId.value = id;
     savePlayPack(id);
-    const g = createOrbGame({ words, untimed: untimed.value });
+    const g = createOrbGame({ words, untimed: untimed.value, difficulty: difficulty.value });
     if (!g.target || g.foods.length === 0) {
       appStore.showToast("这个词库的词太少，换个词库试试", "error");
       return;
@@ -192,16 +206,39 @@ function play() {
   game = startOrb(game);
   phase.value = "playing";
   lastTs = 0;
+  acc = 0;
   stopLoop();
   raf = requestAnimationFrame(loop);
 }
 
+/**
+ * 固定步长 1/120 秒。
+ *
+ * 原来直接把「上一帧到这一帧的真实间隔」喂给引擎（还夹在 50ms），
+ * 帧率一掉，每帧算的时间就比真实时间短，球看起来就变慢 —— 而球长大后
+ * 背景装饰按缩放要多画好几倍格子，正好是最容易掉帧的时候。
+ * 现在把真实时间攒进 acc，按固定步长补齐：掉帧只会更卡，不会更慢。
+ */
+const STEP = 1 / 120;
+/** 切标签回来最多补 250ms，再多就是瞬移了 */
+const MAX_FRAME = 0.25;
+let acc = 0;
+
 function loop(ts: number) {
   if (!game || !renderer) return;
-  const dt = lastTs ? Math.min(0.05, (ts - lastTs) / 1000) : 0;
+  const frame = lastTs ? Math.min(MAX_FRAME, (ts - lastTs) / 1000) : 0;
   lastTs = ts;
 
-  game = stepOrb(game, dt, input?.dir() ?? { x: 0, y: 0 });
+  const dir = input?.dir() ?? { x: 0, y: 0 };
+  acc += frame;
+  let steps = 0;
+  // 上限 30 步：万一卡了 1 秒，也只补到 250ms 的量，不追着补
+  while (acc >= STEP && steps < 30) {
+    game = stepOrb(game, STEP, dir);
+    acc -= STEP;
+    steps += 1;
+    if (game.phase === "over") break;
+  }
 
   // 吃中时撒一把粒子（屏幕坐标）
   if (game.lastHit && game.lastHit.seq !== lastHitSeq) {
@@ -216,7 +253,7 @@ function loop(ts: number) {
     }
   }
 
-  renderer.draw(game, dt);
+  renderer.draw(game, frame);
   syncHud();
 
   if (game.phase === "over") {
@@ -298,6 +335,18 @@ function setUntimed(value: boolean) {
   if (game && !result.value) void prepare(packId.value);
 }
 
+/**
+ * 切换难度：同样重建一局。
+ * 只改「场上有几个待选单词」，速度、血量、时长这些规则一个字都不动 ——
+ * 否则玩家会以为「简单档连移动都变慢了」。
+ */
+function setDifficulty(id: DifficultyId) {
+  if (difficulty.value === id) return;
+  difficulty.value = id;
+  saveDifficulty(id);
+  if (game && !result.value) void prepare(packId.value);
+}
+
 function changePack() {
   stopLoop();
   // 画布会被 v-else 卸掉，渲染器与输入都绑在旧元素上，必须一起清掉重建
@@ -335,12 +384,37 @@ const bestTierName = computed(() => (result.value ? tierName(result.value.tier) 
         <ArrowLeft :size="15" /> 趣味学习
       </button>
       <span class="text-xs text-slate-400">
-        {{ packTitle }} · 吃对变大，吃错掉命
+        {{ packTitle }} · {{ difficultyMeta.name }}档 · 吃对变大，吃错掉命
       </span>
     </div>
 
     <!-- 选词库 -->
     <template v-if="phase === 'pick'">
+      <!-- 难度：只改「场上有几个待选单词」，不改速度/血量/时长 -->
+      <div class="card mb-3 p-4">
+        <div class="mb-2 flex flex-wrap items-baseline justify-between gap-1">
+          <span class="text-sm font-semibold text-slate-800">难度</span>
+          <span class="text-[11px] text-slate-400">只改场上待选单词数，速度、血量、时长都一样</span>
+        </div>
+        <div class="grid grid-cols-4 gap-2">
+          <button
+            v-for="d in DIFFICULTIES"
+            :key="d.id"
+            class="rounded-xl border px-1 py-2 text-center transition"
+            :class="difficulty === d.id
+              ? 'border-brand-500 bg-brand-50 text-brand-700 shadow-sm'
+              : 'border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'"
+            @click="setDifficulty(d.id)"
+          >
+            <div class="text-sm font-semibold">{{ d.name }}</div>
+            <div class="text-[11px] tabular-nums" :class="difficulty === d.id ? 'text-brand-500' : 'text-slate-400'">
+              {{ d.options }} 词
+            </div>
+          </button>
+        </div>
+        <p class="mt-2 text-[11px] leading-relaxed text-slate-400">{{ difficultyMeta.desc }}</p>
+      </div>
+
       <div class="grid gap-3 sm:grid-cols-2">
         <button
           v-for="p in wordPacks"
@@ -374,10 +448,16 @@ const bestTierName = computed(() => (result.value ? tierName(result.value.tier) 
           <div class="rounded-lg bg-slate-900/70 px-2.5 py-1 text-sm font-semibold tabular-nums text-white">
             {{ untimed ? "练习" : timeText(hud.time) }}
           </div>
-          <!-- 层级：半径封顶后，进度感靠它体现（越吃背景越远） -->
-          <span class="rounded-md bg-white/85 px-2 py-0.5 text-[11px] text-slate-500">
-            {{ tierLabel }}
-          </span>
+          <!-- 层级 + 难度：放同一行，别往下挤，不然会被中间的目标提示条盖住 -->
+          <div class="flex items-center gap-1">
+            <!-- 层级：半径封顶后，进度感靠它体现（越吃背景越远） -->
+            <span class="rounded-md bg-white/85 px-2 py-0.5 text-[11px] text-slate-500">
+              {{ tierLabel }}
+            </span>
+            <span class="rounded-md bg-white/85 px-2 py-0.5 text-[11px] text-slate-500">
+              {{ difficultyMeta.name }} · {{ difficultyMeta.options }} 词
+            </span>
+          </div>
         </div>
         <div class="flex items-center gap-2">
           <span class="flex items-center gap-1 rounded-lg bg-white/85 px-2 py-1 text-rose-500">
@@ -401,8 +481,9 @@ const bestTierName = computed(() => (result.value ? tierName(result.value.tier) 
       </div>
 
       <!-- 目标提示（只给中文，不能给英文，否则一眼就找到答案了）
-           这里用完整释义：球内只有十几个字，长释义放不下；横条可以换行 -->
-      <div class="pointer-events-none absolute inset-x-0 top-[52px] flex flex-col items-center gap-1.5 px-3">
+           这里用完整释义：球内只有十几个字，长释义放不下；横条可以换行
+           位置从 52px 下移到 64px：左上角现在是「时间 + 层级/难度」两行，不能让提示条压上去 -->
+      <div class="pointer-events-none absolute inset-x-0 top-[64px] flex flex-col items-center gap-1.5 px-3">
         <div
           class="max-w-[94%] rounded-xl bg-white/90 px-3 py-1.5 text-center text-xs leading-relaxed text-slate-600 shadow-sm"
         >
@@ -460,6 +541,20 @@ const bestTierName = computed(() => (result.value ? tierName(result.value.tier) 
             练习 · 不限时
           </button>
         </div>
+        <!-- 难度：随时可换，换了立刻重建这一局 -->
+        <div class="mt-1 flex flex-wrap items-center justify-center gap-1.5">
+          <button
+            v-for="d in DIFFICULTIES"
+            :key="d.id"
+            class="rounded-full px-2.5 py-1 text-[11px] transition"
+            :class="difficulty === d.id
+              ? 'bg-brand-600 text-white'
+              : 'bg-white text-slate-500 ring-1 ring-slate-200 hover:bg-slate-50'"
+            @click="setDifficulty(d.id)"
+          >
+            {{ d.name }} · {{ d.options }} 词
+          </button>
+        </div>
         <button class="btn-primary mt-2" @click="play"><Play :size="15" /> 开始</button>
         <span class="text-[11px] text-slate-400">电脑：鼠标或 WASD 移动 · 手机：按住屏幕拖动</span>
       </div>
@@ -476,7 +571,7 @@ const bestTierName = computed(() => (result.value ? tierName(result.value.tier) 
           <div class="mt-2 text-3xl font-bold tabular-nums text-slate-900">{{ result.score }} 分</div>
           <div class="mt-1 text-xs text-slate-500">
             答对 {{ result.correct }} · 答错 {{ result.wrong }} · 正确率 {{ accuracyText }} ·
-            最高连击 {{ result.bestCombo }} · {{ bestTierName }}
+            最高连击 {{ result.bestCombo }} · {{ bestTierName }} · {{ difficultyMeta.name }}档
           </div>
           <div v-if="banked" class="mt-2 text-xs text-emerald-600">
             已加入 {{ banked }} 个词到复习队列

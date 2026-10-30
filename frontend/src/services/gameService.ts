@@ -199,6 +199,31 @@ export function saveUntimed(value: boolean): void {
   }
 }
 
+// ---------------- 游戏难度 ----------------
+
+const DIFFICULTY_KEY = "knowflow.play.difficulty";
+
+/**
+ * 上次选的难度档（简单 / 普通 / 复杂 / 困难）。
+ * 存字符串而不是枚举，校验交给引擎的 difficultyOf()：认不出来就回落普通档，
+ * 这样以后加档位不用改存档兼容逻辑。
+ */
+export function loadDifficulty(fallback = "normal"): string {
+  try {
+    return localStorage.getItem(DIFFICULTY_KEY) || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+export function saveDifficulty(id: string): void {
+  try {
+    localStorage.setItem(DIFFICULTY_KEY, id);
+  } catch {
+    /* 忽略 */
+  }
+}
+
 // ---------------- 游戏成绩 ----------------
 
 export function loadGameProgress(): GameProgress {

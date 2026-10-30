@@ -154,25 +154,31 @@ export function createOrbRenderer(canvas: HTMLCanvasElement): OrbRenderer {
   const fontOf = (size: number) => `600 ${size}px ${FONT_STACK}`;
 
   /**
-   * 给食物球排英文单词：先试单行逐级缩字号，长词（≥11 字母）拆两行，
-   * 实在放不下才截断加省略号。
+   * 给食物球排英文单词：先试单行逐级缩字号，长词拆两行，
+   * 实在放不下才截断加省略号（纯逻辑在 layoutWordWithMeasure，见文件末尾）。
    *
    * 为什么不按单词长度改球的大小：那会变成「看球大小猜答案」，干扰项就白设计了。
    */
-  function layoutWord(
-    text: string,
-    maxWidth: number,
-    maxFont: number,
-    minFont = 9
-  ): { lines: string[]; size: number } {
-    return layoutWordWithMeasure(text, maxWidth, maxFont, minFont, (t, size) =>
-      widthOfText(t, size)
-    );
-  }
-
   function widthOfText(t: string, size: number): number {
     ctx.font = fontOf(size);
     return ctx.measureText(t).width;
+  }
+
+  /**
+   * 排版缓存：同一批球每帧都要重新排版，而 measureText 是慢路径。
+   * 球大小 / 缩放一变 key 就变，按「词 + 宽度 + 字号」缓存后，
+   * 一局里绝大多数帧都能直接命中。
+   */
+  const layoutCache = new Map<string, { lines: string[]; size: number }>();
+  function layoutCached(text: string, maxWidth: number, maxFont: number, minFont = 9) {
+    const key = `${text}|${Math.round(maxWidth)}|${Math.round(maxFont)}`;
+    const hit = layoutCache.get(key);
+    if (hit) return hit;
+    const next = layoutWordWithMeasure(text, maxWidth, maxFont, minFont, widthOfText);
+    // 上限兜底：词库上万条，缓存不能无限长（一局里实际只会出现十几个词）
+    if (layoutCache.size > 400) layoutCache.clear();
+    layoutCache.set(key, next);
+    return next;
   }
 
   /** 中文按字折行，最多两行 */
@@ -201,6 +207,17 @@ export function createOrbRenderer(canvas: HTMLCanvasElement): OrbRenderer {
     const gy0 = Math.floor(top / cell);
     const gy1 = Math.ceil(bottom / cell);
 
+    /**
+     * 相机缩小后，同样一屏要扫的格子数按 1/scale² 增长（scale 0.5 时是 4 倍）。
+     * 每格一次 emoji fillText，在低端手机上就会把帧率打下去 ——
+     * 而帧率正是「球长大后感觉变慢」的元凶之一（引擎侧已改成固定步长兜底，
+     * 这里再把绘制量摁住，双保险）。
+     * 抽稀而不是缩小视野：位置还是那些位置（同一套哈希），只是隔一格画一个，
+     * 观感是「装饰变稀」，不会跳来跳去。
+     */
+    const cells = (gx1 - gx0 + 1) * (gy1 - gy0 + 1);
+    const skip = cells > 40 ? Math.ceil(Math.sqrt(cells / 40)) : 1;
+
     const size = Math.max(11, Math.min(34, cell * scale * 0.32));
     ctx.font = `${size}px ${FONT_STACK}`;
     ctx.textAlign = "center";
@@ -209,6 +226,7 @@ export function createOrbRenderer(canvas: HTMLCanvasElement): OrbRenderer {
 
     for (let gx = gx0; gx <= gx1; gx++) {
       for (let gy = gy0; gy <= gy1; gy++) {
+        if (skip > 1 && (gx + gy) % skip !== 0) continue;
         const h = hash2(gx, gy, shownTier + 1);
         // 约 55% 的格子不放东西，留白才像风景
         if (h % 100 < 55) continue;
@@ -241,7 +259,7 @@ export function createOrbRenderer(canvas: HTMLCanvasElement): OrbRenderer {
     ctx.strokeStyle = "#cbd5e1";
     ctx.stroke();
 
-    const { lines, size } = layoutWord(f.word, r * 1.72, Math.min(20, Math.max(11, r * 0.62)));
+    const { lines, size } = layoutCached(f.word, r * 1.72, Math.min(20, Math.max(11, r * 0.62)));
     ctx.font = fontOf(size);
     ctx.fillStyle = "#1e293b";
     ctx.textAlign = "center";

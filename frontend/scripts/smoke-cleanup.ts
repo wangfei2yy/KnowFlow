@@ -61,6 +61,7 @@ const ALL_KEYS = [
   "knowflow.kitchen.locks",
   "knowflow.play.pack",
   "knowflow.play.untimed",
+  "knowflow.play.difficulty",
   "knowflow.quest.progress",
   "knowflow.quest.session",
   "knowflow.study.position",

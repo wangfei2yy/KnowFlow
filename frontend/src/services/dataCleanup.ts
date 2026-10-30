@@ -70,7 +70,13 @@ const LS = {
   games: ["knowflow.game.progress"],
   idiom: ["knowflow.idiom.level", "knowflow.idiom.mistakes"],
   kitchen: ["knowflow.kitchen.checked", "knowflow.kitchen.locks"],
-  prefs: ["knowflow.theme", "knowflow.companion", "knowflow.play.pack", "knowflow.play.untimed"],
+  prefs: [
+    "knowflow.theme",
+    "knowflow.companion",
+    "knowflow.play.pack",
+    "knowflow.play.untimed",
+    "knowflow.play.difficulty"
+  ],
   ai: [
     "knowflow.ai.config",
     "knowflow.ai.key.persist",
