@@ -18,10 +18,11 @@ import { listFlashcards } from "@/services/flashcardService";
 import { loadPackIndex } from "@/services/knowledgePack";
 import {
   DATA_GROUPS,
+  buildSectionViews,
   clearAllData as clearAllGroups,
   clearGroup,
   formatStat,
-  statGroup,
+  statAll,
   type DataGroup,
   type GroupStat
 } from "@/services/dataCleanup";
@@ -30,7 +31,7 @@ import { downloadJSON } from "@/utils/download";
 import { IS_MINITOOL } from "@/utils/runtime";
 import { OpenAICompatibleProvider } from "@/services/ai/OpenAICompatibleProvider";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
-import { Download, Upload, Trash2, Sparkles, ShieldCheck, Info, ImagePlus, Loader2, CheckCircle2, AlertCircle, FileText, Layers, Sun, Database, RefreshCw } from "lucide-vue-next";
+import { Download, Upload, Sparkles, ShieldCheck, Info, ImagePlus, Loader2, CheckCircle2, AlertCircle, FileText, Layers, Sun, Database, RefreshCw, ChevronDown } from "lucide-vue-next";
 
 const aiStore = useAIStore();
 const docStore = useDocumentStore();
@@ -164,12 +165,27 @@ const showClearDialog = ref(false);
 const showReplaceDialog = ref(false);
 const pendingImport = ref<BackupPayload | null>(null);
 
-// ---------------- 数据管理（分类清除） ----------------
+// ---------------- 数据管理（按分区折叠 + 分类清除） ----------------
 /** 端内没有 AI 相关能力，那一组不显示 */
 const groups = computed(() => DATA_GROUPS.filter((g) => !(IS_MINITOOL && g.id === "ai")));
 const stats = ref<Record<string, GroupStat>>({});
+const statsReady = ref(false);
 const pendingGroup = ref<DataGroup | null>(null);
 const showGroupDialog = ref(false);
+
+/** 分区折叠状态：默认只展开「我的内容」，其余收起，避免一进页面就是十几行 */
+const openSections = ref<Record<string, boolean>>({ content: true });
+/** 内置内容默认收起成一行说明 */
+const showBuiltin = ref(false);
+
+/** 分区视图：分组、条目数、有数据的类数都由它算好，模板只管渲染 */
+const sections = computed(() => buildSectionViews(groups.value, stats.value));
+const totalItems = computed(() => sections.value.reduce((n, s) => n + s.items, 0));
+const filledGroups = computed(
+  () => groups.value.filter((g) => stats.value[g.id] && !stats.value[g.id].empty).length
+);
+/** 概览分段条：只画有数据的分区，用条目数当权重 */
+const barSegments = computed(() => sections.value.filter((s) => s.items > 0));
 
 /** 内置内容清单：只为说明「它们不需要清除」，端内拿不到就不显示 */
 const builtinPacks = ref<{ title: string; count: number; unit: string }[]>([]);
@@ -185,9 +201,8 @@ const PACK_UNIT: Record<string, string> = {
 };
 
 async function refreshStats() {
-  const next: Record<string, GroupStat> = {};
-  for (const g of groups.value) next[g.id] = await statGroup(g);
-  stats.value = next;
+  stats.value = await statAll(groups.value);
+  statsReady.value = true;
 }
 
 function askClear(g: DataGroup) {
@@ -209,7 +224,13 @@ async function doClearGroup() {
 
 onMounted(() => {
   docStore.loadAll();
-  void refreshStats();
+  // 统计出来后：如果「我的内容」是空的，就把第一个有数据的分区展开，
+  // 免得一进来看到的是一片空行
+  void refreshStats().then(() => {
+    if ((sections.value.find((s) => s.id === "content")?.items ?? 0) > 0) return;
+    const first = sections.value.find((s) => s.items > 0);
+    if (first) openSections.value = { [first.id]: true };
+  });
   // 内置内容只做展示，失败（端内无网络）就隐藏这一块
   void loadPackIndex()
     .then((idx) => {
@@ -718,9 +739,9 @@ async function clearAllData() {
       </ul>
     </div>
 
-    <!-- 数据管理：分类清除 -->
+    <!-- 数据管理：分区折叠 + 分类清除 -->
     <div class="card mt-4 p-5">
-      <div class="mb-1 flex items-center gap-2">
+      <div class="mb-3 flex items-center gap-2">
         <Database :size="18" class="text-slate-500" />
         <h2 class="font-semibold text-slate-900">数据管理</h2>
         <button
@@ -730,46 +751,109 @@ async function clearAllData() {
           <RefreshCw :size="12" /> 刷新
         </button>
       </div>
-      <p class="mb-3 text-xs leading-relaxed text-slate-500">
-        按类别清除，只影响选中的那一类。删除不可恢复，建议先在上方导出备份。
+
+      <p class="mb-3 mt-2 text-[11px] leading-relaxed text-slate-400">
+        点分区标题展开，按类别清除，只影响展开后选中的那一类。删除不可恢复，建议先在上面导出一份备份。
       </p>
 
-      <div class="divide-y divide-slate-100">
-        <div v-for="g in groups" :key="g.id" class="flex items-center gap-3 py-2.5">
-          <div class="min-w-0 flex-1">
-            <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <span class="text-sm font-medium text-slate-800">{{ g.label }}</span>
-              <span
-                class="rounded-full px-1.5 py-0.5 text-[10px] tabular-nums"
-                :class="stats[g.id]?.empty === false
-                  ? 'bg-brand-50 text-brand-600'
-                  : 'bg-slate-100 text-slate-400'"
-              >
-                {{ stats[g.id] ? formatStat(g, stats[g.id]) : "统计中…" }}
-              </span>
-            </div>
-            <p class="mt-0.5 truncate text-xs text-slate-400">{{ g.desc }}</p>
+      <!-- 概览：一眼看清「一共有多少、都堆在哪」 -->
+      <div class="rounded-xl bg-slate-50/80 p-3 ring-1 ring-slate-100">
+        <div class="flex items-end justify-between gap-3">
+          <div class="flex items-baseline gap-1.5">
+            <span class="text-2xl font-semibold leading-none tabular-nums text-slate-900">
+              {{ statsReady ? totalItems : "—" }}
+            </span>
+            <span class="text-xs text-slate-400">项本地记录</span>
           </div>
+          <span class="text-[11px] text-slate-400">
+            {{ filledGroups }} / {{ groups.length }} 类有数据
+          </span>
+        </div>
+        <div v-if="barSegments.length" class="mt-2 flex h-1.5 gap-1 overflow-hidden rounded-full bg-slate-200/60">
+          <div
+            v-for="s in barSegments"
+            :key="s.id"
+            class="h-full rounded-full transition-all duration-500"
+            :class="s.tone"
+            :style="{ flexGrow: s.items }"
+          ></div>
+        </div>
+        <div v-if="barSegments.length" class="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+          <span v-for="s in barSegments" :key="s.id" class="flex items-center gap-1 text-[11px] text-slate-400">
+            <span class="h-1.5 w-1.5 rounded-full" :class="s.tone"></span>
+            {{ s.title }} <span class="tabular-nums">{{ s.items }}</span>
+          </span>
+        </div>
+        <p v-else-if="statsReady" class="mt-1.5 text-[11px] text-slate-400">
+          还没有产生任何本地记录 —— 内置词库和食谱不算在内，它们随应用提供。
+        </p>
+      </div>
+
+      <!-- 分区：点标题展开，空组不显示清除按钮 -->
+      <div class="mt-1">
+        <div v-for="s in sections" :key="s.id" class="border-b border-slate-100 last:border-b-0">
           <button
-            class="shrink-0 rounded-lg border px-2.5 py-1 text-xs transition"
-            :class="stats[g.id]?.empty
-              ? 'cursor-not-allowed border-slate-200 text-slate-300'
-              : 'border-red-200 text-red-600 hover:border-red-300 hover:bg-red-50'"
-            :disabled="stats[g.id]?.empty"
-            @click="askClear(g)"
+            class="flex w-full items-center gap-2 py-2.5 text-left"
+            @click="openSections[s.id] = !openSections[s.id]"
           >
-            清除
+            <span class="h-1.5 w-1.5 shrink-0 rounded-full" :class="s.tone"></span>
+            <span class="shrink-0 text-[13px] font-medium text-slate-700">{{ s.title }}</span>
+            <span class="min-w-0 truncate text-[11px] text-slate-400">
+              {{ s.filled }}/{{ s.groups.length }} 类 · {{ s.items }} 项
+            </span>
+            <ChevronDown
+              :size="14"
+              class="ml-auto shrink-0 text-slate-300 transition-transform"
+              :class="openSections[s.id] ? 'rotate-180' : ''"
+            />
           </button>
+
+          <div v-if="openSections[s.id]" class="pb-2">
+            <p class="mb-1 pl-3.5 text-[11px] text-slate-400">{{ s.hint }}</p>
+            <div
+              v-for="g in s.groups"
+              :key="g.id"
+              class="flex items-center gap-3 rounded-lg py-2 pl-3.5 pr-1 transition hover:bg-slate-50"
+            >
+              <div class="min-w-0 flex-1">
+                <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                  <span class="text-[13px] text-slate-700">{{ g.label }}</span>
+                  <span
+                    class="rounded-full px-1.5 py-0.5 text-[10px] tabular-nums"
+                    :class="stats[g.id]?.empty === false
+                      ? 'bg-brand-50 text-brand-600'
+                      : 'bg-slate-100 text-slate-400'"
+                  >
+                    {{ stats[g.id] ? formatStat(g, stats[g.id]) : "统计中…" }}
+                  </span>
+                </div>
+                <p class="mt-0.5 truncate text-[11px] text-slate-400">{{ g.desc }}</p>
+              </div>
+              <button
+                v-if="stats[g.id] && !stats[g.id].empty"
+                class="shrink-0 rounded-lg px-2 py-1 text-[11px] text-slate-500 transition hover:bg-red-50 hover:text-red-600"
+                title="清除这一类的全部数据"
+                @click="askClear(g)"
+              >
+                清除
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
-      <!-- 内置内容：说明它们为什么不在清除列表里 -->
-      <div v-if="builtinPacks.length" class="mt-4 rounded-xl bg-slate-50 p-3">
-        <div class="flex items-center gap-1.5 text-xs font-medium text-slate-600">
-          <Info :size="12" class="text-slate-400" />
-          内置内容（随应用提供，不需要清除）
-        </div>
-        <div class="mt-1.5 flex flex-wrap gap-1.5">
+      <!-- 内置内容：默认收成一行，点开才展开 -->
+      <button
+        v-if="builtinPacks.length"
+        class="mt-1 flex w-full items-center gap-1.5 rounded-lg py-1.5 text-left text-[11px] text-slate-400 transition hover:text-slate-600"
+        @click="showBuiltin = !showBuiltin"
+      >
+        <Info :size="12" class="shrink-0" />
+        <span class="flex-1">内置内容 {{ builtinPacks.length }} 类（词库 / 语法 / 成语 / 食谱）随应用提供，不需要清除</span>
+        <ChevronDown :size="12" class="shrink-0 transition-transform" :class="showBuiltin ? 'rotate-180' : ''" />
+      </button>
+      <div v-if="showBuiltin && builtinPacks.length" class="rounded-xl bg-slate-50 p-3">
+        <div class="flex flex-wrap gap-1.5">
           <span
             v-for="p in builtinPacks"
             :key="p.title"
@@ -780,18 +864,21 @@ async function clearAllData() {
         </div>
         <p class="mt-1.5 text-[11px] leading-relaxed text-slate-400">
           它们是打包进应用的静态内容，不占本地存储、也不会被清空。
-          想清掉它们留下的学习痕迹，用上面「卡片与复习进度 / 闯关与复习位置 / 背单词进度」。
+          想清掉它们留下的学习痕迹，用上面「学习记录」分区里的对应类别。
         </p>
       </div>
 
       <!-- 全部清除 -->
-      <div class="mt-4 flex items-center gap-3 border-t border-red-100 pt-3">
+      <div class="mt-3 flex items-center gap-3 border-t border-slate-100 pt-3">
         <div class="min-w-0 flex-1">
-          <div class="text-sm font-medium text-red-600">清除所有本地数据</div>
-          <p class="text-xs text-slate-400">含资料、卡片、任务、全部学习进度与设置，相当于恢复出厂。</p>
+          <div class="text-[13px] font-medium text-slate-600">清除所有本地数据</div>
+          <p class="truncate text-[11px] text-slate-400">含资料、卡片、任务、全部学习进度与设置，相当于恢复出厂</p>
         </div>
-        <button class="btn-secondary shrink-0 border-red-200 text-red-600 hover:bg-red-50" @click="showClearDialog = true">
-          <Trash2 :size="14" /> 全部清除
+        <button
+          class="shrink-0 rounded-lg border border-slate-200 px-2.5 py-1 text-[11px] text-slate-500 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+          @click="showClearDialog = true"
+        >
+          全部清除
         </button>
       </div>
     </div>

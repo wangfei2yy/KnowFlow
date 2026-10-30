@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, nextTick, onMounted, onBeforeUnmount } from "vue";
+import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch } from "vue";
 import { useCompanionStore } from "@/stores/companionStore";
 import CompanionAvatar from "@/components/CompanionAvatar.vue";
 import {
@@ -331,6 +331,18 @@ function scrollBottom() {
     listRef.value?.scrollTo({ top: listRef.value.scrollHeight, behavior: "smooth" });
   });
 }
+
+/**
+ * 机器人回复是异步落进消息列表的（工具调用还要查库），
+ * 发送时那次 scrollBottom 早就滚完了，回复会留在视口外。
+ * 这里盯住消息条数，新消息一到就滚到底。
+ */
+watch(
+  () => store.messages.length,
+  () => {
+    if (open.value) scrollBottom();
+  }
+);
 </script>
 
 <template>
@@ -445,7 +457,7 @@ function scrollBottom() {
         <!-- 快捷提问 -->
         <div class="flex gap-2 overflow-x-auto border-t border-slate-100 bg-white px-3 py-2">
           <button
-            v-for="q in ['软件的作用是什么', '资料库有哪些资料', '把最新的资料做成卡片', '总结最新的资料']"
+            v-for="q in ['软件的作用是什么', '资料库有哪些资料', '把最新的资料做成卡片', '我本地存了多少数据', '把小游戏成绩清掉']"
             :key="q"
             class="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600 hover:bg-brand-50 hover:text-brand-600"
             @click="store.sendMessage(q); scrollBottom()"

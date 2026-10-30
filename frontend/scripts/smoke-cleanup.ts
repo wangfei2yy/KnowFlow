@@ -1,15 +1,28 @@
 /**
- * 数据清理逻辑冒烟：分组定义、统计、分类清除、全清兜底。
+ * 数据清理逻辑冒烟：分组定义、分区聚合、统计、分类清除、全清兜底，
+ * 以及小知那一侧的「认范围 / 认确认」纯逻辑。
  * 用 fake-indexeddb 让 Dexie 在 Node 里跑起来。
  */
 import "fake-indexeddb/auto";
 import {
   DATA_GROUPS,
+  DATA_SECTIONS,
+  buildSectionViews,
   clearAllData,
   clearGroup,
   formatStat,
+  groupItemCount,
+  statAll,
   statGroup
 } from "@/services/dataCleanup";
+import {
+  buildCleanupPrompt,
+  isCancel,
+  isConfirm,
+  isStorageQuery,
+  matchCleanupScope,
+  resolveCleanupGroups
+} from "@/services/companion/dataTools";
 import { db } from "@/db/database";
 
 let pass = 0;
@@ -65,7 +78,13 @@ ok(new Set(DATA_GROUPS.map((g) => g.id)).size === DATA_GROUPS.length, "分组 id
 for (const g of DATA_GROUPS) {
   ok(Boolean(g.label && g.desc), `${g.id} 缺少名称或说明`);
   ok((g.tables?.length ?? 0) + (g.keys?.length ?? 0) > 0, `${g.id} 既没有表也没有键`);
+  ok(
+    DATA_SECTIONS.some((s) => s.id === g.section),
+    `${g.id} 的 section「${g.section}」不在分区表里，设置页会漏显示`
+  );
 }
+ok(DATA_SECTIONS.length >= 3, "分区数量偏少");
+ok(new Set(DATA_SECTIONS.map((s) => s.id)).size === DATA_SECTIONS.length, "分区 id 不能重复");
 
 // ---------------- 2) 统计与文案 ----------------
 for (const k of ALL_KEYS) store.set(k, "{}");
@@ -119,9 +138,63 @@ await clearAllData(DATA_GROUPS);
 ok((await db.documents.count()) === 0, "全清应清空资料");
 ok(store.size === 0, `全清后不应残留 knowflow.* 键，实际还剩：${[...store.keys()].join(", ")}`);
 
+// ---------------- 5) 分区聚合 ----------------
+for (const k of ALL_KEYS) store.set(k, "{}");
+const allStats = await statAll(DATA_GROUPS);
+ok(Object.keys(allStats).length === DATA_GROUPS.length, "statAll 应覆盖所有分组");
+ok(groupItemCount(allStats.quest) === 3, "闯关组应有 3 项");
+ok(groupItemCount(undefined) === 0, "没统计到时应算 0 项");
+
+const views = buildSectionViews(DATA_GROUPS, allStats);
+ok(views.length === DATA_SECTIONS.length, `分区视图数量应为 ${DATA_SECTIONS.length}，实际 ${views.length}`);
+ok(
+  views.reduce((n, v) => n + v.groups.length, 0) === DATA_GROUPS.length,
+  "每个分组都应落在某个分区里（不能有孤儿分组）"
+);
+const learning = views.find((v) => v.id === "learning")!;
+ok(learning.groups.length === 5, `学习记录分区应有 5 类，实际 ${learning.groups.length}`);
+ok(learning.filled === 5, `学习记录分区有数据的类数应为 5，实际 ${learning.filled}`);
+ok(learning.items > 0, "学习记录分区应有条目");
+// 空分区不出现在视图里，避免页面出现空标题
+const emptyView = buildSectionViews([], {});
+ok(emptyView.length === 0, "没有分组时不应产生空分区");
+
+// ---------------- 6) 小知：认范围 / 认确认 ----------------
+const g = DATA_GROUPS;
+const scopeOf = (t: string) => matchCleanupScope(t, g)?.scope ?? null;
+ok(scopeOf("把小游戏成绩清掉") === "games", "「小游戏成绩」应命中 games");
+ok(scopeOf("清理背单词进度") === "drill", "「背单词进度」应命中 drill");
+ok(scopeOf("删除成语记录") === "idiom", "「成语」应命中 idiom");
+ok(scopeOf("清空所有学习记录") === "section:learning", "「所有学习记录」应命中分区");
+ok(scopeOf("清除所有数据") === "all", "「所有数据」应命中全清");
+ok(scopeOf("清空所有游戏成绩") === "games", "带「所有」也应优先命中具体分组");
+ok(scopeOf("清掉任务清单") === "tasks", "「任务」应命中 tasks");
+ok(matchCleanupScope("我的资料有多少", g) === null, "纯提问不该被当成清理");
+ok(matchCleanupScope("游戏怎么玩", g) === null, "没有删除动作词就不算清理");
+ok(matchCleanupScope("我本地存了多少数据", g) === null, "存储查询不该被当成清理");
+
+ok(isStorageQuery("我本地存了多少数据"), "存储查询应被识别");
+ok(isStorageQuery("本地数据占多少"), "「占多少」应被识别");
+ok(!isStorageQuery("清空本地数据"), "清理请求不该被当成查询");
+
+ok(isConfirm("确认") && isConfirm("好的") && isConfirm("嗯"), "确认词识别");
+ok(!isConfirm("确认一下我的资料"), "长句不算确认（避免误删）");
+ok(isCancel("算了") && isCancel("取消") && isCancel("不用了"), "取消词识别");
+
+const rGames = resolveCleanupGroups("games", DATA_GROUPS)!;
+ok(rGames.groups.length === 1 && rGames.groups[0].id === "games", "games 只应解析出一个分组");
+const rLearning = resolveCleanupGroups("section:learning", DATA_GROUPS)!;
+ok(rLearning.groups.length === 5, `分区应解析出 5 个分组，实际 ${rLearning.groups.length}`);
+ok(resolveCleanupGroups("all", DATA_GROUPS)!.groups.length === DATA_GROUPS.length, "all 应解析出全部分组");
+ok(resolveCleanupGroups("不存在的组", DATA_GROUPS) === null, "未知范围应返回 null");
+
+const prompt = buildCleanupPrompt("小游戏成绩", rGames.groups, ["小游戏成绩 6 项记录"]);
+ok(prompt.includes("小游戏成绩") && prompt.includes("确认"), "确认文案应包含范围与「确认」");
+ok(buildCleanupPrompt("全部本地数据", DATA_GROUPS, ["x"]).includes("10 类"), "多类时应提示一次清掉几类");
+
 if (failed.length) {
   console.error("\n❌ 数据清理冒烟失败：");
   for (const f of failed) console.error("  •", f);
   process.exit(1);
 }
-console.log(`\n✅ 数据清理 4 组断言全部通过（${pass} 条）`);
+console.log(`\n✅ 数据清理 / 分区 / 小知数据工具断言全部通过（${pass} 条）`);
