@@ -41,6 +41,18 @@ export function createOrbInput(
     onJoystick?.({ active: touch.active, x: touch.x, y: touch.y, dx: touch.dx, dy: touch.dy });
   }
 
+  /**
+   * 只处理落在 canvas 上的指针事件。
+   *
+   * 舞台里除了 canvas 还有「准备好了吗」这层弹层（开始 / 限时 / 难度按钮），
+   * 它们的事件会冒泡到舞台。如果在这里对非 canvas 的按下做 setPointerCapture，
+   * 后续 pointerup 会被重定向到舞台，按钮收不到 click —— 表现就是「点了没反应」。
+   */
+  function fromCanvas(e: PointerEvent): boolean {
+    const target = e.target as HTMLElement | null;
+    return !!target && target.tagName === "CANVAS";
+  }
+
   function localPoint(e: PointerEvent): { x: number; y: number } {
     const rect = el.getBoundingClientRect();
     return { x: e.clientX - rect.left, y: e.clientY - rect.top };
@@ -67,6 +79,9 @@ export function createOrbInput(
   }
 
   function onPointerDown(e: PointerEvent) {
+    // 点在 HUD / 按钮上时直接交给它们，别抢指针
+    if (!fromCanvas(e)) return;
+
     if (e.pointerType === "mouse") {
       // 只认左键：右键/中键不该让球跑起来
       if (e.button !== 0) return;
